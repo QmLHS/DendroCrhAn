@@ -32,7 +32,7 @@ load("pack.RData")
 ```
 
 ## Fonti dei dati
-Dati dendrocronologici: https://www.ncei.noaa.gov/pub/data/paleo/treering/measurements/europe/
+Dati dendrocronologici: https://www.ncei.noaa.gov
 
 Zonce climatiche: https://koeppen-geiger.vu-wien.ac.at/present.htm
 
