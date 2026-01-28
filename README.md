@@ -29,7 +29,9 @@ df_meta <- readRDS("metadata_zone_climatiche.rds")
 # Per il pacchetto di funzioni
 load("pack.RData")
 
-## Fonte dati
+```
+
+## Fonti utilizzate
 Dati dendrocronologici: https://www.ncei.noaa.gov/pub/data/paleo/treering/measurements/europe/
 Zonce climatiche: https://koeppen-geiger.vu-wien.ac.at/present.htm
 Dati climatici SPEI: https://spei.csic.es/database.html
