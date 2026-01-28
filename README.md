@@ -34,11 +34,11 @@ load("pack.RData")
 ## Fonti dei dati
 Dati dendrocronologici: https://www.ncei.noaa.gov
 
-Zonce climatiche: https://koeppen-geiger.vu-wien.ac.at/present.htm
+Zonce climatiche: https://koeppen-geiger.vu-wien.ac.at
 
-Dati climatici SPEI: https://spei.csic.es/database.html
+Dati climatici SPEI: https://koeppen-geiger.vu-wien.ac.at
 
-Altri dati climatici: https://catalogue.ceda.ac.uk/uuid/9cf07e92afaa405da4f40b6733f362d3/
+Altri dati climatici: https://catalogue.ceda.ac.uk/uuid/9cf07e92afaa405da4f40b6733f362d3
 
 
 
