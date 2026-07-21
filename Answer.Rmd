@@ -1,0 +1,148 @@
+---
+title: ""
+author: ""
+output: pdf_document
+---
+
+# Metadati
+
+```{r}
+library(terra)
+kg_map <- rast("KGC/Map_KG-Global/KG_1986-2010.grd")
+clima_valori <- extract(kg_map, df_master[, c("longitude", "latitude")])
+meta <- cbind(df_master, clima_valori[, c("layer")])
+colnames(meta)[ncol(meta)] <- "ID"
+meta <- left_join(meta, rat, by="ID")
+colnames(meta)[(ncol(meta)-1):ncol(meta)] <- c("zona_id","climate_zona")
+df_meta <- meta[, c("stand_id", "longitude", "latitude", "altitude",
+                    "zona_id", "climate_zona", "species", "header_text")]
+saveRDS(df_meta, "metadata_zone_climatiche.rds")
+write.csv(df_meta, "metadata_zone_climatiche.csv", row.names = FALSE)
+```
+
+```{r}
+df_meta <- readRDS("dati/metadata_zone_climatiche.rds")
+df_meta[is.na(df_meta$species),"species"] <- "TICO"
+broad=read.table('dati/tree.species.conifers.broadleaves.csv', header=T, sep=',')
+colnames(broad) <- c("species","leaf")
+df_meta <- left_join(df_meta, broad, by = "species")
+broadleaf <- c("ACPS","TICO","ABGR","JUTH","JUCO","BESP","QUSU")
+df_meta[df_meta$species%in%broadleaf,"leaf"] <- "broadleaf"
+df_meta <- df_meta %>% relocate(header_text, .after = last_col())
+saveRDS(df_meta, "metadata_zone_climatiche_leaf.rds")
+write.csv(df_meta, "metadata_zone_climatiche_leaf.csv", row.names = FALSE)
+```
+
+# Preparation DLNM
+
+```{r}
+library(dplyr)
+library(stringr)
+library(lubridate)
+```
+
+```{r}
+dlnm_spei_crew <- prepara_dlnm_misto(df_meta, var_meteo = "spei", var_ctrl = "tmn",
+                                     month_n = 9, g_clima = NULL,
+                                     g_specie = "Fagus", lag_n = 21)
+```
+
+```{r}
+saveRDS(dlnm_spei_crew,"dati_dlnm/dlnm_21spei_all_tmn_Fagus.rds")
+```
+
+```{r}
+faggio <- readRDS("dati_dlnm/dlnm_21spei_all_tmn_Fagus.rds")
+quercia <- readRDS("dati_dlnm/dlnm_21spei_all_tmn_Quercus.rds")
+pino <- readRDS("dati_dlnm/dlnm_21spei_all_tmn_Pinus.rds")
+```
+
+```{r}
+faggio_auto <- termine_auto(faggio$df, faggio$mat)
+controllo(faggio_auto, report = FALSE, rwl_prev = TRUE)
+faggio_auto$df$ID <- as.factor(faggio_auto$df$ID)
+quercia_auto <- termine_auto(quercia$df, quercia$mat)
+controllo(quercia_auto, report = FALSE, rwl_prev = TRUE)
+quercia_auto$df$ID <- as.factor(quercia_auto$df$ID)
+pino_auto <- termine_auto(pino$df, pino$mat)
+controllo(pino_auto, report = FALSE, rwl_prev = TRUE)
+pino_auto$df$ID <- as.factor(pino_auto$df$ID)
+```
+
+# Run the model
+
+```{r}
+cb_faggio <- crossbasis(faggio_auto$mat, lag = 20,
+                       argvar = list(fun = "ns", df = 2), 
+                       arglag = list(fun = "ns", df = 6))
+model_faggio <- bam(rwl ~ cb_faggio + rwl_prev +
+                   s(ID, bs = "re") +
+                   s(anno, bs = "ps", k = 20),
+                   family = Gamma(link = "log"), 
+                   data = faggio_auto$df,
+                   method = "fREML",
+                   discrete = TRUE)
+pred_faggio <- get_dlnm_pred(model_faggio, cb_faggio, cb_name = "cb_faggio")
+cb_quercia <- crossbasis(quercia_auto$mat, lag = 20,
+                       argvar = list(fun = "ns", df = 2), 
+                       arglag = list(fun = "ns", df = 6))
+model_quercia <- bam(rwl ~ cb_quercia + rwl_prev +
+                   s(ID, bs = "re") +
+                   s(anno, bs = "ps", k = 20),
+                   family = Gamma(link = "log"), 
+                   data = quercia_auto$df,
+                   method = "fREML",
+                   discrete = TRUE)
+pred_quercia <- get_dlnm_pred(model_quercia, cb_quercia, cb_name = "cb_quercia")
+cb_pino <- crossbasis(pino_auto$mat, lag = 20,
+                       argvar = list(fun = "ns", df = 2), 
+                       arglag = list(fun = "ns", df = 6))
+model_pino <- bam(rwl ~ cb_pino + rwl_prev +
+                   s(ID, bs = "re") +
+                   s(anno, bs = "ps", k = 20),
+                   family = Gamma(link = "log"), 
+                   data = pino_auto$df,
+                   method = "fREML",
+                   discrete = TRUE)
+pred_pino <- get_dlnm_pred(model_pino, cb_pino, cb_name = "cb_pino")
+```
+
+# Show the charts
+
+```{r}
+nomi <- c("Pinus","Quercus","Fagus")
+confronto_lag(lista_pred = list(pred_pino,pred_quercia,pred_faggio),
+              valore_spei = 2.5, etichette_mesi = mesi_eng, lag_n=21,
+              nomi_gruppi = nomi)
+ggsave(filename = "gasparrini_genus_pos.pdf",
+       device = "pdf",width = 7, height = 5,  units = "in",dpi = 300 )
+```
+
+```{r}
+png("gasparrini_genus_neg.png", width = 7, height = 5, units = "in", res = 300)
+
+print(confronto_lag(lista_pred = list(pred_pino,pred_quercia,pred_faggio),
+              valore_spei = -2.5, etichette_mesi = mesi_eng, lag_n=21,
+              nomi_gruppi = nomi))
+
+dev.off()
+```
+
+
+```{r}
+grafico_unito(pred_pino,pred_quercia,pred_faggio, mesi=mesi_eng, nomi=nomi,
+              titolo="Lagged Effects of SPEI on Tree Growth by Genus")
+ggsave(filename = "gasparrini_genus.pdf", 
+       device = "pdf",width = 7, height = 10,  units = "in", dpi = 300 )
+```
+
+
+```{r}
+png("gasparrini_genus.png", width = 7, height = 6, units = "in", res = 300)
+
+print(grafico_unito(pred_pino,pred_quercia,pred_faggio, mesi=mesi_eng, nomi=nomi,
+              titolo="Lagged Effects of SPEI on Tree Growth by Genus"))
+
+dev.off()
+```
+
