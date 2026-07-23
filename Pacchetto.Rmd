@@ -7,6 +7,136 @@ output: pdf_document
 
 # Metadati
 
+```{r}
+leggi_tasso <- function(file_txt, vet_specie){
+  file_path <- file.path("dati",file_txt)
+  testo_grezzo <- readChar(file_path, file.info(file_path)$size)
+  tassi_caricati <- unlist(strsplit(testo_grezzo, "\",\\s*\"|\",\""))
+  tassi_caricati <- gsub("^\"|\"$", "", tassi_caricati)
+  tassi_caricati <- gsub("[\r\n\t]+", " ", tassi_caricati)
+  extract_taxa <- function(string, label) {
+    pattern <- paste0(label, "\\s*([A-Za-z\\s\\-\\.]+?)\\s*\\(")
+    match <- str_match(string, pattern)
+    return(match[, 2]) }
+  Tax_Final <- data.frame(
+    ID_Specie = unique(vet_specie),
+    Kingdom   = sapply(tassi_caricati, extract_taxa, "Kingdom"),
+    Phylum    = sapply(tassi_caricati, extract_taxa, "Phylum"),
+    Class     = sapply(tassi_caricati, extract_taxa, "Class"),
+    Category  = sapply(tassi_caricati, extract_taxa, "Category"),
+    Order     = sapply(tassi_caricati, extract_taxa, "Order"),
+    Family    = sapply(tassi_caricati, extract_taxa, "Family"),
+    Genus     = sapply(tassi_caricati, extract_taxa, "Genus"),
+    Species = sapply(tassi_caricati, extract_taxa, "Species"))
+  Tax_Final <- as.data.frame(lapply(Tax_Final, trimws))
+  return(Tax_Final)}
+```
+
+
+```{r}
+ec <- function(file_path,metadata_path){
+  result <- list(metadata = list(), header = list())
+  metadata <- read.delim(metadata_path)
+  nome_stand_up <- toupper(str_sub(file_path, start=6, end=-5))#ATTENZIONE AL PUNTO DI START 
+  if (nome_stand_up %in% metadata$ITRDB_Code) {
+    coordinate <- metadata[metadata$ITRDB_Code==nome_stand_up,c("Latitude","Longitude")]
+    info_stand <- metadata[metadata$ITRDB_Code==nome_stand_up,c("Elevation","Species")]
+    coor <- c(coordinate$Longitude, coordinate$Latitude)
+    result$metadata$coordinate <- coor
+    result$metadata$info <- info_stand}
+  coordinate_estratte <- ecfh(file_path,lista_specie=unique(metadata$Species))
+  if (!is.null(coordinate_estratte$coord_Y) && 
+      !is.null(coordinate_estratte$coord_X)){
+    coor_extr <- c(coordinate_estratte$coord_Y,coordinate_estratte$coord_X)
+    result$header$coordinate <- coor_extr}
+  if (!is.null(coordinate_estratte$Specie)){
+    result$header$specie <- coordinate_estratte$Specie}
+  result$header$head <- coordinate_estratte$header
+  return(result)}
+```
+
+```{r}
+ecfh <- function(file_path,lista_specie) {
+  result <- list()
+  header_lines <- tryCatch({
+    readLines(file_path, n = 3, warn = FALSE)
+  }, error = function(e) {
+    warning("Cannot read file: ", file_path)
+    return(NULL)})
+  if (is.null(header_lines)) return(result)
+  header_text <- str_squish(paste(header_lines, collapse = " "))
+  result$header <- header_text
+  # Estrazione Specie
+  tutte_quattro <- unlist(str_extract_all(header_text, "\\b[A-Z]{4}\\b"))
+  if (length(tutte_quattro) == 1) result$Specie <- tutte_quattro
+  match_lista <- intersect(tutte_quattro, lista_specie)
+  if (length(match_lista) == 1) result$Specie <- match_lista
+  # --- PATTERN 1 (M / N / E) ---
+  m1 <- str_match(header_text, "(-?[[:digit:]]+)\\s*M\\s*(-?[[:digit:]]+)\\s*N?(-?[[:digit:]]+)\\s*E?")
+  if (!is.na(m1[1, 1])) {
+    result$coord_X <- as.numeric(m1[1, 3]) / 100
+    result$coord_Y <- as.numeric(m1[1, 4]) / 100
+    return(result)}
+  # --- NUOVO PATTERN 4 (Formato +DDMM-DDDMM o simile) ---
+  # Cerca un segno (+ o -) seguito da cifre, poi un altro segno e altre cifre
+  m4 <- str_match(header_text, "([+-][[:digit:]]{3,5})([+-][[:digit:]]{3,6})")
+  if (!is.na(m4[1, 1])) {
+    result$coord_X <- as.numeric(m4[1, 2]) / 100
+    result$coord_Y <- as.numeric(m4[1, 3]) / 100
+    return(result)}
+  # --- PATTERN 2 (Spazi e underscore) ---
+  m2 <- str_match(header_text, "(-?[[:digit:]]+\\.?[[:digit:]]*)\\s+(-?[[:digit:]]+\\.?[[:digit:]]*)\\s+_{1,}")
+  if (!is.na(m2[1, 1])) {
+    val2 <- as.numeric(m2[1, 2])
+    val3 <- as.numeric(m2[1, 3])
+    if (val2 < 1000) {
+      result$coord_X <- val3
+      result$coord_Y <- val2
+    } else {
+      result$coord_X <- val2 / 100
+      result$coord_Y <- val3 / 100}
+    return(result)}
+  # --- PATTERN 3 (N / W) ---
+  m3 <- str_match(header_text, "\\s*(-?[[:digit:]]+)\\s*N(-?[[:digit:]]+)\\s*W")
+  if (!is.na(m3[1, 1])) {
+    result$coord_X <- as.numeric(m3[1, 1]) / 100
+    result$coord_Y <- as.numeric(m3[1, 2]) / 100
+    return(result)}
+  # --- PATTERN 10 (Fisso 10 caratteri) ---
+  m10 <- str_match(header_text, "(.{10})\\s+_")
+  if (!is.na(m10[1, 1])) {
+    raw_val <- m10[1, 2]
+    result$coord_X <- as.numeric(substr(raw_val, 1, 5)) / 100
+    result$coord_Y <- as.numeric(substr(raw_val, 6, 10)) / 100
+    return(result)}
+  return(result)}
+```
+
+# Object clima creation
+
+```{r}
+estrazione_clima <- function(df_unici) {
+  file_clima <- c("spei01.nc","CRU_TS_tmp.nc","CRU_TS_tmn.nc",
+                  "CRU_TS_pre.nc","CRU_TS_pet.nc")
+  nomi <- c("spei","tmp","tmn","pre","pet")
+  lista_meteo_raw <- list()
+  for(i in 1:nrow(df_unici)) {
+    p_id <- df_unici$pixel_id[i]
+    coor <- c(df_unici$longitude[i],df_unici$latitude[i])
+    df_pixel_accumulato <- NULL
+    for(j in 1:length(file_clima)) {
+      per <- file.path("dati",file_clima[j])
+      df_temp <- extraction(coor, per, nome = nomi[j])
+      if (is.null(df_pixel_accumulato)) {df_pixel_accumulato <- df_temp
+      } else {
+        df_pixel_accumulato <- merge(df_pixel_accumulato, df_temp, 
+                                     by = "data", all = TRUE)}}
+    lista_meteo_raw[[p_id]] <- df_pixel_accumulato
+    if(i %% 50 == 0) cat("Processati", i, "pixel su", nrow(df_unici), "\n")}
+  return(lista_meteo_raw)}
+```
+
+
 # Preparation DLNM
 
 # Constructs a distributed lag matrix for a specific climate variable. 
@@ -15,8 +145,8 @@ output: pdf_document
 
 ```{r}
 lag_mese <- function(df, val, mese_n=9, lag = 12) {
-  mesi_ita <- c("gen", "feb", "mar", "apr", "mag", "giu", 
-                "lug", "ago", "set", "ott", "nov", "dic")
+  mesi_ita <- c("jan", "feb", "mar", "apr", "may", "jun", 
+                "jul", "aug", "sep", "oct", "nov", "dec")
   # 1. Preparazione (Ordine cronologico per estrarre correttamente)
   df_clean <- df %>%
     mutate(
@@ -50,7 +180,7 @@ lag_mese <- function(df, val, mese_n=9, lag = 12) {
   # Nomi colonne: mostriamo il ritardo (Lag)
   mesi_ripetuti <- rep(c(mese_n:1, 12:(mese_n+1)), length.out = lag)
   offset_anni <- floor((0:(lag - 1) + 3) / 12)
-  colnames(matrice_finale) <- paste0("mese_", mesi_ripetuti, "_anno_", offset_anni)
+  colnames(matrice_finale) <- paste0("month_", mesi_ripetuti, "_year_", offset_anni)
   return(matrice_finale)}
 ```
 
@@ -208,9 +338,101 @@ controllo <- function(output_dlnm, report = TRUE, rwl_prev = FALSE) {
 
 # Run the model
 
+```{r}
+get_dlnm_pred <- function(model, cb_object, cb_name = "final_cb", cen_val = 0) {
+  indices <- grep(paste0("^", cb_name), names(coef(model)))
+  if(length(indices) == 0) {
+    stop("Errore: Non ho trovato coefficienti che corrispondono a: ", cb_name)}
+  beta <- coef(model)[indices]
+  V <- vcov(model)[indices, indices]
+  names(beta) <- gsub(paste0("^", cb_name), "", names(beta))
+  rownames(V) <- colnames(V) <- names(beta)
+  pred <- crosspred(cb_object, coef = beta, vcov = V, 
+                    model.link = "log", cen = cen_val)
+  return(pred)}
+```
+
 # Show the charts
 
+```{r}
+confronto_lag <- function(lista_pred, valore_spei, nomi_gruppi, etichette_mesi,
+                          lag_n = 24) {
+  estrai_slice <- function(pred_obj, v_var, nome) {
+    idx <- which.min(abs(pred_obj$predvar - v_var))
+    data.frame(lag = 0:(lag_n-1),
+      fit = as.vector(pred_obj$matRRfit[idx, ]),
+      low = as.vector(pred_obj$matRRlow[idx, ]),
+      high = as.vector(pred_obj$matRRhigh[idx, ]),
+      gruppo = nome)}
+  df_confronto <- mapply(estrai_slice, lista_pred, valore_spei, nomi_gruppi, SIMPLIFY = FALSE) %>%
+    bind_rows()
+  ggplot(df_confronto, aes(x = lag, y = fit, color = gruppo, fill = gruppo)) +
+    scale_x_reverse(breaks = 0:(lag_n-1), labels = etichette_mesi[1:lag_n]) +
+    geom_hline(yintercept = 1, linetype = "dashed", color = "black") +
+    geom_ribbon(aes(ymin = low, ymax = high), alpha = 0.15, color = NA) +
+    geom_line(linewidth = 1) +
+    labs(title = paste("SPEI = ",valore_spei," | Tree Growth Response by Genus"),
+         x = "Lag (Months)", y = "Regression Coefficient", fill = "Genus", color = "Genus") +
+    theme_light() + 
+    theme(panel.grid.major = element_blank(), # Toglie la griglia principale
+          panel.grid.minor = element_blank(),
+          axis.text.x = element_text(angle = 35, hjust = 1),
+          legend.position = "bottom",
+          axis.title.y = element_text(margin = margin(r = 15)),
+          axis.title.x = element_text(margin = margin(t = 11)),
+          plot.title = element_text(size = 15),
+          legend.text = element_text(face = "bold"))}
+```
 
+```{r}
+grafico_unito <- function(..., nomi, mesi, titolo) {
+  lista_pred <- list(...)
+  nomi_modelli <- nomi
+  if (is.null(nomi_modelli)) {
+    nomi_modelli <- as.character(substitute(list(...))[-1])}
+  prepare_data <- function(pred_obj, model_name) {
+    mat <- pred_obj$matfit
+    df <- expand.grid(spei = pred_obj$predvar, lag = 0:(ncol(mat) - 1))
+    df$fit <- as.vector(mat) 
+    df$model <- model_name
+    return(df)}
+  data_all <- do.call(rbind, lapply(seq_along(lista_pred), function(i) {
+    prepare_data(lista_pred[[i]], nomi_modelli[i])}))
+  data_all$model <- factor(data_all$model, levels = nomi_modelli)
+  mia_palette <- colorRampPalette(c("firebrick", "white", "dodgerblue4"))(30)
+  max_abs_global <- max(abs(data_all$fit), na.rm = TRUE)
+  
+  ggplot(data_all, aes(x = spei, y = lag, z = fit)) +
+    stat_contour_filled(aes(fill = after_stat(level_mid)), 
+                        breaks = seq(-max_abs_global, max_abs_global, length.out = 31)) +
+    facet_wrap(~model, nrow = 1) + 
+    scale_fill_gradientn(colors = mia_palette,
+                         limits = c(-max_abs_global, max_abs_global), name = "Coefficient", 
+                             guide = guide_colorbar(
+      direction = "horizontal", # Forza l'orientamento orizzontale
+      barwidth = 14,            # Larghezza della barra (in unità relative)
+      barheight = 1.1,          # Altezza della barra (sottile!)
+      title.position = "top",   # Titolo sopra la barra
+      title.hjust = 0.5,        # Titolo centrato
+      frame.colour = "black", 
+      ticks.colour = "black"
+    )) +
+       scale_y_continuous(breaks = 0:(length(mesi) - 1), 
+                       labels = mesi, expand = c(0,0)) +
+    theme_minimal() + 
+    theme(legend.position = "bottom", 
+    legend.margin = margin(t = 10),
+      panel.spacing.x = unit(0, "lines"),
+      panel.grid.major = element_line(color = "gray80", linewidth = 0.4),
+      panel.grid.minor = element_blank(),
+      panel.ontop = FALSE,
+      strip.text = element_text(face = "bold", size = 13, ),
+      axis.title.x = element_text(size = 12, margin = margin(t = 11)),
+      plot.title = element_text(size = 16),
+      axis.title.y = element_text(margin = margin(r = 15)),
+      axis.text.y = element_text(size = 11)) +
+    labs(title = titolo, x = "SPEI", y = "Lag (Months)")}
+```
 
 
 

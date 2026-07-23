@@ -7,7 +7,129 @@ output: pdf_document
 # Metadati
 
 ```{r}
+library(ncdf4)
+```
+
+
+
+```{r}
+library(stringr)
+library(dplyr)
 library(terra)
+```
+
+```{r}
+library(terra)
+
+punti_caricati <- readRDS("punti_geografici_punti_vect.rds")
+
+if (inherits(punti_caricati, "PackedSpatVector")) {
+  punti_vect <- vect(punti_caricati)
+} else {
+  punti_vect <- punti_caricati
+}
+
+cat("Numero di stand geografici:", nrow(punti_vect), "\n")
+
+match_spaziale <- sum(names(results_base) %in% punti_vect$stand_id)
+
+cat("Stand con cronologia e coordinate:", match_spaziale, "\n")
+```
+
+## punti_vect deriva da punti_geografici_corretti che non sappiamo da dove arriva ma molto probabilmente da una correzzione di punti_geografici_punti_vect... da approfondire
+
+```{r}
+# 1. Preparazione degli oggetti
+# Assicurati di avere caricato i metadati ITRDB originali
+metadata <- read.delim("DendroCrhAn/ITRDBmetadata12January2022.txt", stringsAsFactors = FALSE)
+
+# Inizializziamo il data.frame finale
+df_master <- data.frame(
+  stand_id = character(),
+  longitude = numeric(),
+  latitude = numeric(),
+  altitude = numeric(),
+  species = character(),
+  header_text = character(),
+  stringsAsFactors = FALSE
+)
+
+cat("Inizio estrazione dati per la Tabella Master...\n")
+
+# 2. Ciclo di estrazione
+for (i in 1:nrow(punti_vect)) {
+  
+  st_id <- punti_vect$stand_id[i]
+  st_id_clean <- gsub(".rwl", "", st_id) # Rimuoviamo .rwl per il confronto
+  file_path <- file.path("File", st_id)
+  
+  # Estrazione dati da ec()
+  ec_res <- tryCatch(ec(file_path, "dati/ITRDBmetadata12January2022.txt"), 
+                     error = function(e) NULL)
+  
+  if (is.null(ec_res)) next
+  
+  # --- ALTITUDINE (Elevation) ---
+  # Cerchiamo nei metadati usando il codice in maiuscolo
+  idx_meta <- which(metadata$ITRDB_Code == toupper(st_id_clean))
+  elev <- if(length(idx_meta) > 0) metadata$Elevation[idx_meta[1]] else NA
+  
+  # --- SPECIE ---
+  sp_header <- if(!is.null(ec_res$header$specie)) {
+    toupper(trimws(ec_res$header$specie))
+  } else { NA }
+  sp_meta <- if(length(idx_meta) > 0) trimws(metadata$Species[idx_meta[1]]) else NA
+  
+  # Controllo coincidenza
+  # (Se ho la specie nei metadati ITRDB, uso quella, altrimenti uso quella dell'header)
+  if (!is.na(sp_meta)) {
+    sp_finale <- sp_meta
+  } else if (!is.na(sp_header)) {
+    sp_finale <- sp_header
+  } else {
+    sp_finale <- NA
+  }
+  
+  # --- COORDINATE (Usiamo quelle corrette di punti_vect) ---
+  coords <- crds(punti_vect[i])
+  
+  # --- AGGIUNTA AL DATA.FRAME ---
+  df_master <- rbind(df_master, data.frame(
+    stand_id = st_id,
+    longitude = coords[1, 1],
+    latitude = coords[1, 2],
+    altitude = as.numeric(elev),
+    species = sp_finale,
+    header_text = paste(ec_res$header$head, collapse = " "), # Uniamo le righe dell'header
+    stringsAsFactors = FALSE
+  ))
+  
+  if(i %% 100 == 0) cat("Processati", i, "stand su", nrow(punti_vect), "\n")
+}
+
+# 3. Pulizia finale e salvataggio
+# Rimuoviamo eventuali duplicati o righe vuote
+df_master <- unique(df_master)
+
+saveRDS(df_master, "tabella_master_ITRDB_corretta.rds")
+write.csv(df_master, "tabella_master_ITRDB.csv", row.names = FALSE)
+
+cat("\nTabella Master creata con successo!")
+```
+
+ - Pacchetti
+terra
+stringr
+ - Funzioni esterne
+ec()
+ecfh()
+ - Oggetti esterni
+punti_vect
+ - File esterni
+dati/ITRDBmetadata12January2022.txt
+File/*.rwl
+
+```{r}
 kg_map <- rast("KGC/Map_KG-Global/KG_1986-2010.grd")
 clima_valori <- extract(kg_map, df_master[, c("longitude", "latitude")])
 meta <- cbind(df_master, clima_valori[, c("layer")])
@@ -20,8 +142,18 @@ saveRDS(df_meta, "metadata_zone_climatiche.rds")
 write.csv(df_meta, "metadata_zone_climatiche.csv", row.names = FALSE)
 ```
 
+ - Pacchetti
+terra
+dplyr
+ - Oggetti esterni
+df_master
+rat
+ - File esterni
+KGC/Map_KG-Global/KG_1986-2010.grd
+
 ```{r}
 df_meta <- readRDS("dati/metadata_zone_climatiche.rds")
+# An examination of the missing values reveals that they are TICO species
 df_meta[is.na(df_meta$species),"species"] <- "TICO"
 broad=read.table('dati/tree.species.conifers.broadleaves.csv', header=T, sep=',')
 colnames(broad) <- c("species","leaf")
@@ -33,6 +165,178 @@ saveRDS(df_meta, "metadata_zone_climatiche_leaf.rds")
 write.csv(df_meta, "metadata_zone_climatiche_leaf.csv", row.names = FALSE)
 ```
 
+ - File esterni
+metadata_zone_climatiche.rds
+tree.species.conifers.broadleaves.csv
+
+```{r}
+xtabs(nsiti ~ leaf + climate_zona, data = cont)
+```
+
+```{r}
+plot_clima_leaf <- function(data) {
+  my_palette <- c(rgb(46/255,60/255,9/255),rgb(190/255,197/255,169/255))
+  ggplot(data, aes(x = climate_zona, y = nsiti, fill = leaf)) +
+    geom_col(position = position_dodge(preserve = "single"), color = "black", alpha = 0.8) +
+    scale_fill_manual(values = my_palette) +
+    labs(
+      title = "Distribuzione dei Siti per Zona Climatica e Tipo di Foglia",
+      x = "Zona Climatica (Köppen-Geiger)",
+      y = "Numero di Siti",
+      fill = "Tipo di Foglia") +
+    theme_minimal() +
+    theme(axis.text.x = element_text(hjust = 1),
+      panel.grid.major.x = element_blank())}
+plot_clima_leaf(cont)
+```
+
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+```{r}
+Tax <- leggi_tasso(file_txt = "Tasso.txt", df_meta$species)
+# Replace missing species names with the corresponding genus name
+Tax[is.na(Tax$Species),"Species"] <- Tax[is.na(Tax$Species),"Genus"]
+head(Tax,10)
+```
+
+```{r}
+# Proportion of missing values for the Category level
+nrow(Tax[is.na(Tax$Category),])/nrow(Tax)
+```
+
+The Category level is therefore removed from the taxonomic classification 
+
+```{r}
+sub_Tax <- subset(Tax, select = -Category)
+head(sub_Tax,10)
+```
+
+Phylum, Class, and leaf type always vary consistently across the dataset. Therefore, including all three taxonomic levels would provide redundant information for species differentiation. Likewise, Kingdom is constant across all species and is excluded from the final taxonomic dendrogram.
+
+```{r}
+Tax_den <- Tax %>% dplyr::select(ID_Specie,Class,Order,Family,Genus,Species)
+saveRDS(Tax_den, "tassonomia.rds")
+write.csv(Tax_den, "tassonomia.csv", row.names = FALSE)
+```
+
+ - Oggetti esterni
+df_meta
+ - File esterni
+dati/Tasso.txt
+
+ - Output
+Tax
+sub_Tax
+Tax_den
+tassonomia.rds
+
+ - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+```{r}
+tax <- readRDS("tassonomia.rds")
+df_meta <- readRDS("metadata_zone_climatiche_leaf.rds")
+
+tax <- tax %>%
+  rename(species = ID_Specie,
+  Species_name = Species)
+veg <- left_join(subset(df_meta, select = -leaf), tax, by="species")
+veg <- veg %>% mutate(gruppo_climatico = case_when(
+  grepl("^BS", climate_zona) ~ "BS",
+  grepl("^Cf", climate_zona) ~ "Cf",
+  grepl("^Cs", climate_zona) ~ "Cs",
+  grepl("^D",  climate_zona) ~ "D",
+  grepl("^ET", climate_zona) ~ "E"))
+veg <- veg %>%
+  mutate(gruppo_Order = case_when(
+    Class  == "Pinopsida"  ~ "Pinopsida",
+    Family == "Fagaceae"    ~ "Fagaceae",
+    TRUE                    ~ "other_Angiospermae"))
+```
+
+## Check the distribution of taxa across climate groups
+
+```{r}
+xtabs( ~ Class + gruppo_climatico, data = veg)
+```
+
+```{r}
+xtabs( ~ Order + gruppo_climatico, data = veg)
+```
+
+```{r}
+xtabs( ~ gruppo_Order + gruppo_climatico, data = veg)
+```
+
+```{r}
+df_veg <- subset(veg, select = c(stand_id, gruppo_climatico, gruppo_Order,
+                                 longitude, latitude))
+saveRDS(df_veg, "meta_essential.rds")
+write.csv(df_veg, "meta_essential.csv", row.names = FALSE)
+```
+
+Group BS: arid climates
+Group Cf: temperate climates
+Group Cs: Mediterranean climates
+Group D: cold continental climates
+Group E: polar climates
+
+```{r}
+Tax <- readRDS("tassonomia.rds")
+colnames(Tax)[c(1,6)] <- c("species","Species_name")
+veg <- left_join(subset(df_meta, select = -leaf), Tax, by="species")
+veg <- veg %>% mutate(gruppo_climatico = case_when(
+  grepl("^BS", climate_zona) ~ "BS",
+  grepl("^Cf", climate_zona) ~ "Cf",
+  grepl("^Cs", climate_zona) ~ "Cs",
+  grepl("^D",  climate_zona) ~ "D",
+  grepl("^ET", climate_zona) ~ "E"))
+veg <- veg %>%
+  mutate(gruppo_Order = case_when(
+    Class  == "Pinopsida"  ~ "Conifer",
+    Order == "Fagales"     ~ "Broadleaf_Fagales",
+    TRUE                   ~ "Broadleaf_other"))
+xtabs( ~ gruppo_Order + gruppo_climatico, data = veg)
+```
+ 
+ - Pacchetti
+dplyr
+ - Funzioni esterne
+Nessuna
+ - Oggetti esterni
+df_meta
+ - File esterni
+tassonomia.rds
+
+ - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+
+extraction of pixel
+
+```{r}
+df_tax <- readRDS("meta_essential.rds")
+find_pixel_index <- function(lon, lat, map_lon, map_lat) {
+  idx_lon <- which.min(abs(map_lon - lon))
+  idx_lat <- which.min(abs(map_lat - lat))
+  return(paste(idx_lon, idx_lat, sep = "_"))}
+```
+
+```{r}
+df_tax$pixel_id <- mapply(find_pixel_index, 
+                             df_tax$longitude, 
+                             df_tax$latitude, 
+                             MoreArgs = list(map_lon = map_lon, map_lat = map_lat))
+```
+
+
+# Object clima creation
+
+```{r}
+df_pixel <- df_tax %>%
+  distinct(pixel_id, .keep_all = TRUE) %>%
+  select(pixel_id, longitude, latitude)
+clima <- estrazione_clima(df_pixel)
+saveRDS(clima, "DendroCrhAn/lista_clima.Rds")
+```
+
 # Preparation DLNM
 
 ```{r}
@@ -42,19 +346,27 @@ library(lubridate)
 ```
 
 ```{r}
-dlnm_spei_crew <- prepara_dlnm_misto(df_meta, var_meteo = "spei", var_ctrl = "tmn",
+dlnm_spei_fagus <- prepara_dlnm_misto(df_meta, var_meteo = "spei", var_ctrl = "tmn",
+                                     month_n = 9, g_clima = NULL,
+                                     g_specie = "Fagus", lag_n = 21)
+dlnm_spei_quercus <- prepara_dlnm_misto(df_meta, var_meteo = "spei", var_ctrl = "tmn",
+                                     month_n = 9, g_clima = NULL,
+                                     g_specie = "Fagus", lag_n = 21)
+dlnm_spei_pinus <- prepara_dlnm_misto(df_meta, var_meteo = "spei", var_ctrl = "tmn",
                                      month_n = 9, g_clima = NULL,
                                      g_specie = "Fagus", lag_n = 21)
 ```
 
 ```{r}
-saveRDS(dlnm_spei_crew,"dati_dlnm/dlnm_21spei_all_tmn_Fagus.rds")
+saveRDS(dlnm_spei_fagus,"DendroCrhAn/dlnm_21spei_all_tmn_Fagus.rds")
+saveRDS(dlnm_spei_quercus,"DendroCrhAn/dlnm_21spei_all_tmn_Fagus.rds")
+saveRDS(dlnm_spei_pinus,"DendroCrhAn/dlnm_21spei_all_tmn_Fagus.rds")
 ```
 
 ```{r}
-faggio <- readRDS("dati_dlnm/dlnm_21spei_all_tmn_Fagus.rds")
-quercia <- readRDS("dati_dlnm/dlnm_21spei_all_tmn_Quercus.rds")
-pino <- readRDS("dati_dlnm/dlnm_21spei_all_tmn_Pinus.rds")
+faggio <- readRDS("DendroCrhAn/dlnm_21spei_all_tmn_Fagus.rds")
+quercia <- readRDS("DendroCrhAn/dlnm_21spei_all_tmn_Quercus.rds")
+pino <- readRDS("DendroCrhAn/dlnm_21spei_all_tmn_Pinus.rds")
 ```
 
 ```{r}
@@ -69,7 +381,41 @@ controllo(pino_auto, report = FALSE, rwl_prev = TRUE)
 pino_auto$df$ID <- as.factor(pino_auto$df$ID)
 ```
 
+# da sistemare
+
+```{r}
+# Creiamo una funzione per calcolare il QAIC (visto che glm gaussian non lo dà di default)
+# Per modelli gaussiani, l'AIC standard è solitamente sufficiente.
+risultati <- data.frame(df_var=integer(), df_lag=integer(), AIC=double())
+
+for(i in 2:5) {      # Testiamo df per lo SPEI da 2 a 5
+  for(j in 2:5) {    # Testiamo df per il lag da 2 a 5
+    cb_temp <- crossbasis(mes_matrix, 
+                         lag = c(0, 23), # Lag da 0 a 11 mesi
+                         argvar = list(fun = "ns", df = i), 
+                         arglag = list(fun = "ns", df = j))
+    
+    mod_temp <- glm(rwl ~ cb_temp + 
+                         ns(tmn, df=3), 
+                       family = gaussian(), 
+                       data = df_clean)
+    
+    risultati <- rbind(risultati, data.frame(df_var=i, df_lag=j, AIC=AIC(mod_temp)))
+  }
+}
+
+# Trova la combinazione con l'AIC più basso
+miglior_modello <- risultati[which.min(risultati$AIC),]
+print(miglior_modello)
+```
+
 # Run the model
+
+```{r}
+library(dlnm)
+library(mgcv)
+library(splines)
+```
 
 ```{r}
 cb_faggio <- crossbasis(faggio_auto$mat, lag = 20,
@@ -83,6 +429,9 @@ model_faggio <- bam(rwl ~ cb_faggio + rwl_prev +
                    method = "fREML",
                    discrete = TRUE)
 pred_faggio <- get_dlnm_pred(model_faggio, cb_faggio, cb_name = "cb_faggio")
+```
+
+```{r}
 cb_quercia <- crossbasis(quercia_auto$mat, lag = 20,
                        argvar = list(fun = "ns", df = 2), 
                        arglag = list(fun = "ns", df = 6))
@@ -94,6 +443,9 @@ model_quercia <- bam(rwl ~ cb_quercia + rwl_prev +
                    method = "fREML",
                    discrete = TRUE)
 pred_quercia <- get_dlnm_pred(model_quercia, cb_quercia, cb_name = "cb_quercia")
+```
+
+```{r}
 cb_pino <- crossbasis(pino_auto$mat, lag = 20,
                        argvar = list(fun = "ns", df = 2), 
                        arglag = list(fun = "ns", df = 6))
@@ -110,6 +462,19 @@ pred_pino <- get_dlnm_pred(model_pino, cb_pino, cb_name = "cb_pino")
 # Show the charts
 
 ```{r}
+library(ggplot2)
+```
+
+```{r}
+mesi_sin <- c("sep", "aug", "jul", "jun", "may", "apr", "mar", "feb", "jan") 
+mesi_cos <- c("dec", "nov", "oct")
+mesi_eng <- c()
+for (anno in c(0:2))
+{mesi_eng <- c(mesi_eng,str_replace_all(paste(mesi_sin,"-",anno), " ", ""),
+                        str_replace_all(paste(mesi_cos,"-",anno+1), " ", ""))}
+```
+
+```{r}
 nomi <- c("Pinus","Quercus","Fagus")
 confronto_lag(lista_pred = list(pred_pino,pred_quercia,pred_faggio),
               valore_spei = 2.5, etichette_mesi = mesi_eng, lag_n=21,
@@ -120,14 +485,11 @@ ggsave(filename = "gasparrini_genus_pos.pdf",
 
 ```{r}
 png("gasparrini_genus_neg.png", width = 7, height = 5, units = "in", res = 300)
-
 print(confronto_lag(lista_pred = list(pred_pino,pred_quercia,pred_faggio),
               valore_spei = -2.5, etichette_mesi = mesi_eng, lag_n=21,
               nomi_gruppi = nomi))
-
 dev.off()
 ```
-
 
 ```{r}
 grafico_unito(pred_pino,pred_quercia,pred_faggio, mesi=mesi_eng, nomi=nomi,
@@ -139,10 +501,8 @@ ggsave(filename = "gasparrini_genus.pdf",
 
 ```{r}
 png("gasparrini_genus.png", width = 7, height = 6, units = "in", res = 300)
-
 print(grafico_unito(pred_pino,pred_quercia,pred_faggio, mesi=mesi_eng, nomi=nomi,
               titolo="Lagged Effects of SPEI on Tree Growth by Genus"))
-
 dev.off()
 ```
 
