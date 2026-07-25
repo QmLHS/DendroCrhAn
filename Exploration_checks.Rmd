@@ -12,11 +12,13 @@ output: pdf_document
 ```{r include=FALSE}
 library(dplR)
 library(ggplot2)
+library(dplyr)
+library(tidyr)
 ```
 
 ```{r}
 # Carichiamo a titolo di esempio un singolo file RWL dalla cartella File/
-sito_esempio <- read.rwl(paste0("File/","ital015.rwl"), format = "tucson")
+sito_esempio <- read.rwl(file.path("File","swit321.rwl"), format = "tucson")
 
 # Eseguiamo il calcolo della replicazione campionaria sul singolo sito
 res_threshold <- get_sample_depth(sito_esempio)
@@ -25,16 +27,21 @@ res_threshold <- get_sample_depth(sito_esempio)
 p_singolo <- ggplot(res_threshold$df, aes(x = Anno, y = n_valore)) +
   geom_area(fill = "steelblue", alpha = 0.1) +
   geom_step(color = "steelblue", linewidth = 1) +
-  geom_hline(yintercept = res_threshold$soglia, color = "indianred", linetype = "dashed", linewidth = 1) +
-  annotate("text", x = max(res_threshold$df$Anno) - 35, y = res_threshold$soglia + 0.5, 
-           label = paste("minimum threshold:", res_threshold$soglia), color = "indianred", fontface = "bold", hjust = 0) +
-  labs(title = "Sample Replication and Robustness Threshold (Single Site Example)",
+  geom_hline(yintercept = res_threshold$soglia, color = "indianred",
+             linetype = "dashed", linewidth = 1) +
+  annotate("text",
+           x = max(res_threshold$df$Anno) - 35, y = res_threshold$soglia + 0.5, 
+           label = paste("minimum threshold:", res_threshold$soglia), 
+           color = "indianred", fontface = "bold", hjust = 0) +
+  labs(title = "Sample Replication and Robustness Threshold",
        x = "Year", y = res_threshold$label) +
   theme_bw() +
-  theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+  theme(plot.title = element_text(hjust = 0.5, face = "bold", margin = margin(b=10)),
+        axis.title.x = element_text(margin = margin(t = 15)),
+        axis.title.y = element_text(margin = margin(r = 15)))
 
 print(p_singolo)
-ggsave("DendroCrhAn/sample_death_single_site.pdf", plot = p_singolo, width = 9, height = 6, dpi = 300)
+ggsave("sample_death.pdf", width = 9, height = 6, dpi = 300)
 ```
 
 

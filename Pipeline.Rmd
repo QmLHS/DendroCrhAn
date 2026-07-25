@@ -20,7 +20,7 @@ url = "https://www.ncei.noaa.gov/pub/data/paleo/treering/measurements/europe/"
 archetype <- download_files(url,download = FALSE)
 ```
 
-# Sample depth
+# Sample depth and Stand Processing
 
 ```{r include=FALSE}
 library(dplR)
@@ -29,13 +29,12 @@ library(dplyr)
 library(tidyr)
 ```
 
-```{r}
+```{r include=FALSE}
 stand_ids_disponibili <- list.files("File/")
 
 # Genera il dataframe cumulativo su tutti i siti
 df_long_finale <- prepara_df_disponibilita(
-  stand_ids  = stand_ids_disponibili, 
-  folder     = "File/",
+  stand_ids  = stand_ids_disponibili,
   start_year = 1900, 
   end_year   = 2024
 )
@@ -60,11 +59,6 @@ p_cumulativo <- ggplot(df_long_finale, aes(x = Anno, y = Frequenza_Relativa, col
 print(p_cumulativo)
 ggsave("DendroCrhAn/sample_death_cumulative.pdf", plot = p_cumulativo, width = 9, height = 6, dpi = 300)
 ```
-
-
-# Stand Processing
-
-dati/ITRDBmetadata12January2022.txt
 
 ```{r}
 library(dplR)
