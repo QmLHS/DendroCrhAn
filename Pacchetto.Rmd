@@ -1,16 +1,604 @@
 ---
 title: "Pacchetto"
-author: "Giacomo"
+author: "Giacomo Colasurdo"
 date: "2026-07-21"
 output: pdf_document
 ---
 
-# Metadati
+# Sample depth
+
+# Evaluates the temporal sample replication for a single ring-width chronology 
+# (RWI/RWL matrix). It automatically detects tree IDs using dplR::autoread.ids() 
+# to count unique trees per year (applying a robustness threshold of >= 6 trees). 
+# If tree identification fails, it defaults to counting raw series with a 
+# threshold of >= 12 series.
+
+```{r}
+get_sample_depth <- function(RWI) {
+  # 1. Prova a leggere gli ID degli alberi
+  ids <- tryCatch(autoread.ids(RWI), error = function(e) NULL)
+  
+  # 2. Prepariamo il conteggio anno per anno
+  coverage_df <- data.frame(
+    Anno = as.numeric(rownames(RWI)),
+    n_presenti = rowSums(!is.na(RWI))
+  )
+  
+  # 3. Logica della soglia
+  if (!is.null(ids)) {
+    # Se abbiamo gli ID, la soglia è 6 alberi. 
+    # Dobbiamo però capire quante SERIE servono per avere 6 alberi.
+    # In media si assume 2 core per albero, quindi 12 serie, 
+    # ma usiamo il parametro "6 alberi" come riferimento teorico.
+    soglia_val <- 6 
+    # Nota: per semplicità di grafico, se contiamo gli alberi attivi per anno:
+    n_alberi_per_anno <- sapply(1:nrow(RWI), function(i) {
+      length(unique(ids$tree[which(!is.na(RWI[i, ]))]))
+    })
+    coverage_df$n_valore <- n_alberi_per_anno
+    label_y <- "Number of trees"
+  } else {
+    # Fallback: se autoread.ids fallisce, usiamo 12 serie
+    soglia_val <- 12
+    coverage_df$n_valore <- coverage_df$n_presenti
+    label_y <- "Number of series"}
+  
+  return(list(df = coverage_df, soglia = soglia_val, label = label_y))}
+```
+
+# Reads an individual site's Tucson-formatted file (.rwl) and determines its 
+# annual validity based on two criteria:
+# - Supera_Soglia: Reaches the minimum robustness threshold (6 trees or 12 series).
+# - In_Common_Interval: Falls within the site's 100% common overlap period 
+#   calculated via dplR::common.interval().
+
+```{r}
+analizza_sito <- function(stand_id) {
+  # Costruisci il percorso del file (modifica se necessario)
+  file_path <- paste0("File/", stand_id)
+  
+  # 1. Caricamento sicuro
+  rwl <- tryCatch(read.rwl(file_path, format="tucson"), error = function(e) return(NULL))
+  if(is.null(rwl)) return(NULL)
+  
+  anni <- as.numeric(rownames(rwl))
+  
+  # 2. Calcolo Soglia (6 alberi o 12 serie)
+  ids <- tryCatch(autoread.ids(rwl), error = function(e) NULL)
+  n_target <- if(!is.null(ids)) 6 else 12
+  
+  # Per ogni anno, conta quante serie/alberi ci sono
+  presenza_anno <- data.frame(Anno = anni)
+  if(!is.null(ids)) {
+    presenza_anno$count <- sapply(1:nrow(rwl), function(i) {
+      length(unique(ids$tree[which(!is.na(rwl[i, ]))]))
+    })
+  } else {
+    presenza_anno$count <- rowSums(!is.na(rwl))}
+  
+  # 3. Identificazione Common Interval (100% delle serie presenti)
+  # common.interval restituisce il sotto-periodo dove TUTTE le serie del file sono presenti
+  ci_rwl <- tryCatch(common.interval(rwl, make.plot = FALSE), error = function(e) NULL)
+  anni_ci <- if(!is.null(ci_rwl)) as.numeric(rownames(ci_rwl)) else NULL
+  
+  # Risultato: per ogni anno del sito, segnamo se supera le due soglie
+  res <- presenza_anno %>%
+    mutate(
+      Supera_Soglia = count >= n_target,
+      In_Common_Interval = Anno %in% anni_ci)
+  
+  return(res)}
+```
+
+# Iterates over a vector of site IDs, runs 'analizza_sito()' for each, and 
+# computes the cumulative relative frequency (%) of available sites across a 
+# defined time window (e.g., 1900-2024). Returns a tidy long-format dataframe 
+# comparing the availability rate for both inclusion criteria over time.
+
+```{r}
+prepara_df_disponibilita <- function(stand_ids, start_year = 1900, end_year = 2024) {
+  
+  # 1. Storage initialization
+  anni_globali <- start_year:end_year
+  storage_soglia <- setNames(numeric(length(anni_globali)), anni_globali)
+  storage_common <- setNames(numeric(length(anni_globali)), anni_globali)
+  siti_letti_con_successo <- 0
+  
+  # 2. Loop over sites
+  for (sid in stand_ids) {
+    # Call to your analizza_sito function (must be defined in the global environment)
+    dati_sito <- analizza_sito(sid) 
+    
+    if(!is.null(dati_sito)) {
+      siti_letti_con_successo <- siti_letti_con_successo + 1
+      
+      # Extract valid years within range
+      anni_ok_soglia <- as.character(dati_sito$Anno[dati_sito$Supera_Soglia & 
+                                                    dati_sito$Anno >= start_year & 
+                                                    dati_sito$Anno <= end_year])
+      
+      anni_ok_common <- as.character(dati_sito$Anno[dati_sito$In_Common_Interval & 
+                                                    dati_sito$Anno >= start_year & 
+                                                    dati_sito$Anno <= end_year])
+      
+      # Update accumulator
+      storage_soglia[anni_ok_soglia] <- storage_soglia[anni_ok_soglia] + 1
+      storage_common[anni_ok_common] <- storage_common[anni_ok_common] + 1}}
+  
+  # 3. Relative frequency calculation and pivot
+  df_long <- data.frame(
+    Anno = anni_globali,
+    Soglia_6_Alberi = (storage_soglia / length(stand_ids)) * 100,
+    Common_Interval_100 = (storage_common / length(stand_ids)) * 100
+  ) %>% 
+    filter(Soglia_6_Alberi > 0 | Common_Interval_100 > 0) %>%
+    pivot_longer(cols = -Anno, names_to = "threshold_Type", values_to = "Relative_Frequency")
+  
+ # Print a short report to console
+  cat("Elaboration completed.\nTotal Site:", length(stand_ids), 
+      "\nSite read successfully:", siti_letti_con_successo, "\n")
+  
+  return(df_long)}
+```
+
+```{r}
+df_long_finale <- prepara_df_disponibilita(stand_ids = veg$stand_id)
+
+# Ora controlla se il dataframe ha dei dati
+head(df_long_finale)
+
+ggplot(df_long_finale, aes(x = Anno, y = Frequenza_Relativa, color = Tipo_Soglia)) +
+  # Solo le linee, senza geom_area
+  geom_line(linewidth = 1.3) + 
+  
+  # Scala Y 0-100%
+  scale_y_continuous(
+    limits = c(0, 100), 
+    breaks = seq(0, 100, 10),
+    labels = function(x) paste0(x, "%")
+  ) +
+  
+  # Colori puliti
+  scale_color_manual(
+    values = c("Soglia_6_Alberi" = "lightsalmon", "Common_Interval_100" = "steelblue"),
+    labels = c("100% Series (Common Interval)", "Min. 6 Trees (Robust Threshold)")
+  ) +
+  
+  labs(
+    title = "Relative Frequency of Site Availability",
+    subtitle = paste("Based on", length(unique(veg$stand_id)), "valid sites"),
+    x = "Year", 
+    y = "Percentage of Total Sites",
+    color = "Inclusion Criteria"
+  ) +
+  
+  # Tema bianco senza griglia minore per massima pulizia
+  theme_bw() + 
+  theme(
+    legend.position = "bottom",
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
+    panel.grid.minor = element_blank(),
+    axis.title.x = element_text(margin = margin(t = 10)),
+    axis.title.y = element_text(margin = margin(r = 10))
+  )
+ggsave("sample_death_cumulative.pdf", width = 9, height = 6, dpi = 300)
+```
+
+# download rwl series
+
+# Connects to the NOAA ITRDB server for European tree-ring measurements, 
+# parses the HTML directory listing, filters for valid '.rwl' dataset files, 
+# and optionally downloads them to a specified local directory.
+
+```{r}
+download_files = function(url,download=TRUE) {
+  # Fetch the directory listing HTML
+  response = GET(url)
+  # Check if the request was successful
+  if (status_code(response) != 200) {
+    stop("Failed to retrieve the directory listing.")}
+  # Parse the HTML content
+  page = content(response, "text")
+  parsed_html = read_html(page)
+  # Extract all anchor (<a>) elements, this includes the rwl and the txt
+  links = parsed_html %>% html_nodes("a") %>% html_attr("href")
+  # Filter out parent directory links and non-rwl file links
+  file_links = links[grepl("\\.rwl", links)]
+  # Delete the element ".rwl" from the string
+  file_links_spill = str_split(file_links, ".rwl") #Split the string
+  int=c()
+  for (i in 1:length(file_links_spill)){
+    # delete the tail and pick up only the name 
+    int=c(int,file_links_spill[[i]][1])}
+    final.list=c()
+    for (i in int){
+      # If the string end with number, have to record it
+      if (grepl("\\s*[[:digit:]]$",i)==TRUE){
+        final.list=c(final.list,paste0(i, ".rwl"))}}
+  int=final.list
+  # Download the file list
+  if (download){
+    for (file_link in int) {
+      # Construct the full URL for each file
+      file_url = paste0(url, file_link)
+      # Define the local destination file path
+      destfile = file.path("File", basename(file_link))
+      # Download the file
+      download.file(file_url, destfile, mode = "wb")
+      # Print status
+      cat("Downloaded:", file_link, "\n")}}
+  return(final.list)}
+```
+
+# Stand Processing
+
+# Wrapper function that extracts stand metadata (coordinates, 
+# elevation, species) by cross-referencing official ITRDB metadata 
+# and raw file header information parsed via ecfh().
+
+```{r}
+ec <- function(file_path,metadata_path){
+  result <- list(metadata = list(), header = list())
+  metadata <- read.delim(metadata_path)
+  nome_stand_up <- toupper(gsub("\\.rwl$", "", basename(file_path), ignore.case = TRUE))
+  if (nome_stand_up %in% metadata$ITRDB_Code) {
+    coordinate <- metadata[metadata$ITRDB_Code==nome_stand_up,c("Latitude","Longitude")]
+    info_stand <- metadata[metadata$ITRDB_Code==nome_stand_up,c("Elevation","Species")]
+    coor <- c(coordinate$Longitude, coordinate$Latitude)
+    result$metadata$coordinate <- coor
+    result$metadata$info <- info_stand}
+  coordinate_estratte <- ecfh(file_path,lista_specie=unique(metadata$Species))
+  if (!is.null(coordinate_estratte$coord_Y) && 
+      !is.null(coordinate_estratte$coord_X)){
+    coor_extr <- c(coordinate_estratte$coord_Y,coordinate_estratte$coord_X)
+    result$header$coordinate <- coor_extr}
+  if (!is.null(coordinate_estratte$Specie)){
+    result$header$specie <- coordinate_estratte$Specie}
+  result$header$head <- coordinate_estratte$header
+  return(result)}
+```
+
+# Parses the first 3 lines (header) of a raw Tucson (.rwl) file. 
+# Extracts 4-letter species codes and uses multiple regex pattern 
+# matches to parse and standardize geographic coordinates (lon/lat)
+
+```{r}
+ecfh <- function(file_path,lista_specie) {
+  result <- list()
+  header_lines <- tryCatch({
+    readLines(file_path, n = 3, warn = FALSE)
+  }, error = function(e) {
+    warning("Cannot read file: ", file_path)
+    return(NULL)})
+  if (is.null(header_lines)) return(result)
+  header_text <- str_squish(paste(header_lines, collapse = " "))
+  result$header <- header_text
+  # Estrazione Specie
+  tutte_quattro <- unlist(str_extract_all(header_text, "\\b[A-Z]{4}\\b"))
+  if (length(tutte_quattro) == 1) result$Specie <- tutte_quattro
+  match_lista <- intersect(tutte_quattro, lista_specie)
+  if (length(match_lista) == 1) result$Specie <- match_lista
+  # --- PATTERN 1 (coordinates in "M N E" format) ---
+  m1 <- str_match(header_text, "(-?[[:digit:]]+)\\s*M\\s*(-?[[:digit:]]+)\\s*N?(-?[[:digit:]]+)\\s*E?")
+  if (!is.na(m1[1, 1])) {
+    result$coord_X <- as.numeric(m1[1, 3]) / 100
+    result$coord_Y <- as.numeric(m1[1, 4]) / 100
+    return(result)}
+  # --- PATTERN 4 (signed DDMM-DDDMM format) ---
+  # Cerca un segno (+ o -) seguito da cifre, poi un altro segno e altre cifre
+  m4 <- str_match(header_text, "([+-][[:digit:]]{3,5})([+-][[:digit:]]{3,6})")
+  if (!is.na(m4[1, 1])) {
+    result$coord_X <- as.numeric(m4[1, 2]) / 100
+    result$coord_Y <- as.numeric(m4[1, 3]) / 100
+    return(result)}
+  # --- PATTERN 2 (decimal coordinates followed by underscores) ---
+  m2 <- str_match(header_text, "(-?[[:digit:]]+\\.?[[:digit:]]*)\\s+(-?[[:digit:]]+\\.?[[:digit:]]*)\\s+_{1,}")
+  if (!is.na(m2[1, 1])) {
+    val2 <- as.numeric(m2[1, 2])
+    val3 <- as.numeric(m2[1, 3])
+    if (val2 < 1000) {
+      result$coord_X <- val3
+      result$coord_Y <- val2
+    } else {
+      result$coord_X <- val2 / 100
+      result$coord_Y <- val3 / 100}
+    return(result)}
+  # --- PATTERN 3 ("N ... W" format) ---
+  m3 <- str_match(header_text, "\\s*(-?[[:digit:]]+)\\s*N(-?[[:digit:]]+)\\s*W")
+  if (!is.na(m3[1, 1])) {
+    result$coord_X <- as.numeric(m3[1, 1]) / 100
+    result$coord_Y <- as.numeric(m3[1, 2]) / 100
+    return(result)}
+  # --- PATTERN 10 (fixed-width 10-character format) ---
+  m10 <- str_match(header_text, "(.{10})\\s+_")
+  if (!is.na(m10[1, 1])) {
+    raw_val <- m10[1, 2]
+    result$coord_X <- as.numeric(substr(raw_val, 1, 5)) / 100
+    result$coord_Y <- as.numeric(substr(raw_val, 6, 10)) / 100
+    return(result)}
+  return(result)}
+```
+
+# Evaluates ring-width series to identify a continuous common 
+# time interval satisfying minimum tree count and period length constraints. 
+# Falls back to column-wise counts if tree grouping fails.
+
+```{r}
+common_interval <- function(rwl, tim, min.trees = 6, start.yr = 1901, 
+                                    end.yr = 2025, min.period.len = 9) {
+  if (!is.data.frame(rwl)) stop("'rwl' deve essere un data.frame")
+  yrs <- as.numeric(row.names(rwl))
+  rwlNotNA <- !is.na(rwl)
+  samp.depth <- tryCatch({
+    tim <- autoread.ids(rwl)
+    apply(rwlNotNA, 1, function(row_exists) {
+      series_present <- names(rwl)[row_exists]
+      unique_trees <- unique(tim$tree[rownames(tim) %in% series_present])
+      length(unique_trees)})
+  }, error = function(e) {
+    message("Nota: Impossibile raggruppare per albero (nomi serie non standard). Uso il conteggio colonne.")
+    min.trees <- min.trees*2
+    return(rowSums(rwlNotNA))})
+  potential.years <- samp.depth >= min.trees & yrs >= start.yr & yrs <= end.yr
+  runs <- rle(potential.years)
+  max.run.len <- max(runs$lengths[runs$values == TRUE], 0)
+  output <- list(found = FALSE, rwl = NULL)
+  if (max.run.len >= min.period.len) {
+    end.indices <- cumsum(runs$lengths)
+    start.indices <- c(1, end.indices[-length(end.indices)] + 1)
+    valid.runs <- which(runs$values == TRUE & runs$lengths >= min.period.len)
+    target.run <- valid.runs[which.max(runs$lengths[valid.runs])]
+    row.indices <- start.indices[target.run]:end.indices[target.run]
+    res <- rwl[row.indices, , drop = FALSE]
+    keep.col.mask <- colSums(!is.na(res)) > 0
+    output$found <- TRUE
+    output$rwl <- res[, keep.col.mask, drop = FALSE]}
+  return(output)}
+```
+
+# Iterates through all .rwl files in a directory, applies spline 
+# detrending, isolates common time windows, and builds standard mean chronologies.
+
+```{r}
+elabora_cronologie_rwl <- function(dir_file) {
+  
+  nomi_file <- list.files(dir_file, pattern = "\\.rwl$", full.names = FALSE)
+  totale_stands <- length(nomi_file)
+  results_base <- list()
+  
+  for (i in seq_along(nomi_file)) {
+    stand <- nomi_file[i]
+    file_path <- file.path(dir_file, stand)
+    
+    cron_df <- tryCatch({
+      RWL  <- read.rwl(file_path, format = "tucson")
+      DET  <- detrend(RWL, method = "Spline", nyrs = 30, f = 0.5)
+      det  <- common_interval(DET)
+      if (!det$found) stop("Intervallo comune non trovato")
+      cron <- chron(det$rwl, biweight = TRUE, prewhiten = TRUE)
+      data.frame(
+        anno = as.numeric(rownames(cron)), 
+        rwl  = as.numeric(cron[, 1]))},
+      error = function(e) NULL)
+    
+    if (!is.null(cron_df)) {
+      results_base[[stand]] <- cron_df}
+    
+    if (i %% 100 == 0) cat("Processati:", i, "/", totale_stands, "\n")}
+  return(results_base)}
+```
+
+# Metadata 
+
+# Consolidates stand-level metadata (coordinates, altitude, species) 
+# by combining header extraction and official ITRDB text records. 
+# Outputs a consolidated master dataframe and a SpatVector object for spatial analysis.
+
+```{r}
+estrai_metadati_e_master <- function(stand_validi, path_metadata, dir_file) {
+  metadata_txt <- read.delim(path_metadata, stringsAsFactors = FALSE)
+  lista_master <- list()
+  
+  for (i in seq_along(stand_validi)) {
+    stand <- stand_validi[i]
+    st_id_clean <- gsub("\\.rwl$", "", stand, ignore.case = TRUE)
+    file_path <- file.path(dir_file, stand)
+    
+    ec_res <- tryCatch({
+      ec(file_path, path_metadata)}, 
+      error = function(e) NULL)
+    
+    if (is.null(ec_res)) next
+    
+    # --- COORDINATE GREZZE ---
+    h_coords  <- ec_res$header$coordinate
+    lon_ext   <- if (!is.null(h_coords)) h_coords[1] else NA
+    lat_ext   <- if (!is.null(h_coords)) h_coords[2] else NA
+    
+    m_coords  <- ec_res$metadata$coordinate
+    lon_itrdb <- if (!is.null(m_coords)) m_coords[1] else NA
+    lat_itrdb <- if (!is.null(m_coords)) m_coords[2] else NA
+    
+    lon_def <- ifelse(!is.na(lon_ext), lon_ext, lon_itrdb)
+    lat_def <- ifelse(!is.na(lat_ext), lat_ext, lat_itrdb)
+    
+    # --- ALTITUDINE ---
+    idx_meta <- which(toupper(metadata_txt$ITRDB_Code) == toupper(st_id_clean))
+    elev <- if (length(idx_meta) > 0) metadata_txt$Elevation[idx_meta[1]] else NA
+    
+    # --- SPECIE ---
+    sp_header <- if (!is.null(ec_res$header$specie)) toupper(trimws(ec_res$header$specie)) else NA
+    sp_meta   <- if (length(idx_meta) > 0) trimws(metadata_txt$Species[idx_meta[1]]) else NA
+    sp_finale <- ifelse(!is.na(sp_meta), sp_meta, ifelse(!is.na(sp_header), sp_header, NA))
+    
+    # --- HEADER TEXT ---
+    head_txt <- if (!is.null(ec_res$header$head)) paste(ec_res$header$head, collapse = " ") else NA
+    
+    # --- COMPILAZIONE RECORD UNICO ---
+    lista_master[[stand]] <- data.frame(
+      stand_id        = stand,
+      lon_extract     = as.numeric(lon_ext),
+      lat_extract     = as.numeric(lat_ext),
+      lon_ITRDB       = as.numeric(lon_itrdb),
+      lat_ITRDB       = as.numeric(lat_itrdb),
+      lon_definitiva  = as.numeric(lon_def),
+      lat_definitiva  = as.numeric(lat_def),
+      altitude        = as.numeric(elev),
+      species         = as.character(sp_finale),
+      header_text     = as.character(head_txt),
+      stringsAsFactors = FALSE)
+    
+    if (i %% 100 == 0) cat("Metadati estratti:", i, "/", length(stand_validi), "\n")}
+  
+  # Assemblaggio Dataframe Unico
+  df_master_totale <- do.call(rbind, lista_master)
+  
+  # Creazione SpatVector basato sulle coordinate definitive
+  df_valid_geo <- df_master_totale[!is.na(df_master_totale$lon_definitiva) & 
+                                   !is.na(df_master_totale$lat_definitiva), ]
+  punti_vect <- vect(
+    df_valid_geo, 
+    geom = c("lon_definitiva", "lat_definitiva"), 
+    crs = "+proj=longlat +datum=WGS84")
+  
+  return(list(
+    df_master  = df_master_totale,
+    punti_vect = punti_vect))}
+```
+
+# Coordinate solution
+
+# Identifies tree-ring stands whose coordinates incorrectly fall 
+# into marine cells (NA values in the CRU raster). For these problematic 
+# stands, it performs a localized search (+/- 2.5 degrees) to snap the point 
+# to the nearest valid terrestrial grid cell.
+
+```{r}
+gestisci_punti_in_acqua <- function(df_audit, path_raster_cru = "dati/CRU_TS_pre.nc") {
+  
+  # 1. Carichiamo il raster CRU
+  raster_cru <- rast(path_raster_cru)[[1]]
+  
+  # 2. Definiamo inizialmente lon/lat_definitiva usando la miglior coordinata disponibile
+  # (Se lon_extract è valida usiamo quella, altrimenti ITRDB)
+  df_audit$lon_definitiva <- ifelse(!is.na(df_audit$lon_extract), df_audit$lon_extract, df_audit$lon_ITRDB)
+  df_audit$lat_definitiva <- ifelse(!is.na(df_audit$lat_extract), df_audit$lat_extract, df_audit$lat_ITRDB)
+  
+  # 3. Creiamo lo SpatVector basato ESCLUSIVAMENTE sulle coordinate DEFINITIVE
+  punti_def_vect <- vect(
+    df_audit[!is.na(df_audit$lon_definitiva) & !is.na(df_audit$lat_definitiva), ], 
+    geom = c("lon_definitiva", "lat_definitiva"), 
+    crs = "+proj=longlat +datum=WGS84")
+  
+  # 4. Estraiamo i valori dal raster CRU per le coordinate DEFINITIVE
+  valori_cru <- terra::extract(raster_cru, punti_def_vect, ID = FALSE)[, 1]
+  
+  # 5. Isoliamo gli stand la cui coordinata DEFINITIVA cade su NA (in acqua)
+  idx_acqua <- which(is.na(valori_cru))
+  stand_in_acqua_ids <- punti_def_vect$stand_id[idx_acqua]
+  
+  # Selezioniamo solo le righe degli stand finiti in mare
+  df_res <- df_audit[df_audit$stand_id %in% stand_in_acqua_ids, ]
+  
+  # 6. SNAP-TO-LAND: Spostiamo i punti in acqua sulla cella di terraferma CRU più vicina
+  punti_acqua_vect <- punti_def_vect[idx_acqua]
+  
+# Inizializziamo i vettori per le nuove coordinate snapped
+  lons_snap <- numeric(length(idx_acqua))
+  lats_snap <- numeric(length(idx_acqua))
+  
+  # 5. SNAP-TO-LAND LOCALE (Ciclo punto per punto su raggio ristretto)
+  for (j in 1:length(idx_acqua)) {
+    p_singolo <- punti_acqua_vect[j]
+    
+    # Definiamo una finestra locale di ricerca (+/- 2.5 gradi attorno al punto)
+    ext_locale <- ext(crds(p_singolo)[1] - 2.5, crds(p_singolo)[1] + 2.5,
+                      crds(p_singolo)[2] - 2.5, crds(p_singolo)[2] + 2.5)
+    
+    # Ritagliamo il raster sulla finestra locale ed estraiamo le sole celle di TERRA
+    r_locale <- crop(raster_cru, ext_locale)
+    celle_terra_locali <- as.points(r_locale, values = FALSE, na.rm = TRUE)
+    
+    # Se troviamo celle terrestri nella finestra locale, prendiamo la più vicina
+    if (length(celle_terra_locali) > 0) {
+      idx_nearest <- nearest(p_singolo, celle_terra_locali)$to_id
+      coords_nearest <- crds(celle_terra_locali[idx_nearest])
+      
+      lons_snap[j] <- coords_nearest[1]
+      lats_snap[j] <- coords_nearest[2]
+    } else {
+      # Fallback di sicurezza nel caso remoto che non trovi terra entro 2.5 gradi
+      lons_snap[j] <- crds(p_singolo)[1]
+      lats_snap[j] <- crds(p_singolo)[2]}}
+  
+  # Assegniamo le coordinate snapped corrette
+  df_res$lon_snap <- lons_snap
+  df_res$lat_snap <- lats_snap
+  
+  # Selezioniamo le colonne
+  audit_completo <- df_res[, c("stand_id",
+                               "lon_extract", "lat_extract", 
+                               "lon_ITRDB", "lat_ITRDB", 
+                               "lon_definitiva", "lat_definitiva",
+                               "lon_snap", "lat_snap",
+                               "header_text")]
+  
+  return(audit_completo)}
+```
+
+# Merges corrected marine stands back into the full dataset. 
+# It applies either a longitude sign inversion (-Lon, common header typo) 
+# or the local Snap-To-Land coordinate based on a logical decision vector.
+
+```{r}
+applica_correzioni_coordinate <- function(df_audit_totale, df_audit_acqua, vec_inversione) {
+  # 1. Copia del dataframe completo di tutti gli stand
+  df_corr <- df_audit_totale
+  # Definiamo le coordinate iniziali (Header con fallback su ITRDB)
+  df_corr$lon_corretta <- ifelse(!is.na(df_corr$lon_extract), df_corr$lon_extract, df_corr$lon_ITRDB)
+  df_corr$lat_corretta <- ifelse(!is.na(df_corr$lat_extract), df_corr$lat_extract, df_corr$lat_ITRDB)
+  df_corr$metodo_correzione <- "Nessuna_Correzione"
+  
+  # 2. Identifichiamo gli stand finiti in mare
+  stand_in_acqua <- df_audit_acqua$stand_id
+  # Mappatura del vettore di inversione (-Lon) per gli stand in acqua
+  inverte_segno <- vec_inversione[stand_in_acqua]
+  inverte_segno[is.na(inverte_segno)] <- FALSE
+  
+  # 3. Calcolo delle nuove coordinate solo per gli stand in mare
+  lon_rettificate <- ifelse(inverte_segno, -1 * df_audit_acqua$lon_definitiva, df_audit_acqua$lon_snap)
+  lat_rettificate <- ifelse(inverte_segno, df_audit_acqua$lat_definitiva, df_audit_acqua$lat_snap)
+  metodi_applicati <- ifelse(inverte_segno, "Inversione_Segno", "Snap_To_Land")
+  
+  # 4. Aggiornamento nel dataframe completo
+  idx <- match(stand_in_acqua, df_corr$stand_id)
+  df_corr$lon_corretta[idx] <- lon_rettificate
+  df_corr$lat_corretta[idx] <- lat_rettificate
+  df_corr$metodo_correzione[idx] <- metodi_applicati
+  # 5. Filtro per eliminare eventuali stand completamente privi di coordinate
+  df_valid <- df_corr[!is.na(df_corr$lon_corretta) & !is.na(df_corr$lat_corretta), ]
+  
+  # 6. Creazione dello SpatVector finale COMPLETO  
+  names(df_valid)[names(df_valid) == "temp_lon"] <- "longitude"
+  names(df_valid)[names(df_valid) == "temp_lat"] <- "latitude"
+  punti_geografici_corretti <- vect(
+    df_valid,
+    geom = c("longitude", "latitude"),
+    crs = "+proj=longlat +datum=WGS84")
+  return(list(
+    vect  = punti_geografici_corretti,
+    audit = df_corr))}
+```
+
+# Taxonomies
+
+# Parses a raw text file containing taxonomic hierarchy strings 
+# and constructs a structured data frame aligned with a target 
+# species vector.
 
 ```{r}
 leggi_tasso <- function(file_txt, vet_specie){
-  file_path <- file.path("dati",file_txt)
-  testo_grezzo <- readChar(file_path, file.info(file_path)$size)
+  testo_grezzo <- readChar(file_txt, file.info(file_txt)$size)
   tassi_caricati <- unlist(strsplit(testo_grezzo, "\",\\s*\"|\",\""))
   tassi_caricati <- gsub("^\"|\"$", "", tassi_caricati)
   tassi_caricati <- gsub("[\r\n\t]+", " ", tassi_caricati)
@@ -32,87 +620,29 @@ leggi_tasso <- function(file_txt, vet_specie){
   return(Tax_Final)}
 ```
 
-
-```{r}
-ec <- function(file_path,metadata_path){
-  result <- list(metadata = list(), header = list())
-  metadata <- read.delim(metadata_path)
-  nome_stand_up <- toupper(str_sub(file_path, start=6, end=-5))#ATTENZIONE AL PUNTO DI START 
-  if (nome_stand_up %in% metadata$ITRDB_Code) {
-    coordinate <- metadata[metadata$ITRDB_Code==nome_stand_up,c("Latitude","Longitude")]
-    info_stand <- metadata[metadata$ITRDB_Code==nome_stand_up,c("Elevation","Species")]
-    coor <- c(coordinate$Longitude, coordinate$Latitude)
-    result$metadata$coordinate <- coor
-    result$metadata$info <- info_stand}
-  coordinate_estratte <- ecfh(file_path,lista_specie=unique(metadata$Species))
-  if (!is.null(coordinate_estratte$coord_Y) && 
-      !is.null(coordinate_estratte$coord_X)){
-    coor_extr <- c(coordinate_estratte$coord_Y,coordinate_estratte$coord_X)
-    result$header$coordinate <- coor_extr}
-  if (!is.null(coordinate_estratte$Specie)){
-    result$header$specie <- coordinate_estratte$Specie}
-  result$header$head <- coordinate_estratte$header
-  return(result)}
-```
-
-```{r}
-ecfh <- function(file_path,lista_specie) {
-  result <- list()
-  header_lines <- tryCatch({
-    readLines(file_path, n = 3, warn = FALSE)
-  }, error = function(e) {
-    warning("Cannot read file: ", file_path)
-    return(NULL)})
-  if (is.null(header_lines)) return(result)
-  header_text <- str_squish(paste(header_lines, collapse = " "))
-  result$header <- header_text
-  # Estrazione Specie
-  tutte_quattro <- unlist(str_extract_all(header_text, "\\b[A-Z]{4}\\b"))
-  if (length(tutte_quattro) == 1) result$Specie <- tutte_quattro
-  match_lista <- intersect(tutte_quattro, lista_specie)
-  if (length(match_lista) == 1) result$Specie <- match_lista
-  # --- PATTERN 1 (M / N / E) ---
-  m1 <- str_match(header_text, "(-?[[:digit:]]+)\\s*M\\s*(-?[[:digit:]]+)\\s*N?(-?[[:digit:]]+)\\s*E?")
-  if (!is.na(m1[1, 1])) {
-    result$coord_X <- as.numeric(m1[1, 3]) / 100
-    result$coord_Y <- as.numeric(m1[1, 4]) / 100
-    return(result)}
-  # --- NUOVO PATTERN 4 (Formato +DDMM-DDDMM o simile) ---
-  # Cerca un segno (+ o -) seguito da cifre, poi un altro segno e altre cifre
-  m4 <- str_match(header_text, "([+-][[:digit:]]{3,5})([+-][[:digit:]]{3,6})")
-  if (!is.na(m4[1, 1])) {
-    result$coord_X <- as.numeric(m4[1, 2]) / 100
-    result$coord_Y <- as.numeric(m4[1, 3]) / 100
-    return(result)}
-  # --- PATTERN 2 (Spazi e underscore) ---
-  m2 <- str_match(header_text, "(-?[[:digit:]]+\\.?[[:digit:]]*)\\s+(-?[[:digit:]]+\\.?[[:digit:]]*)\\s+_{1,}")
-  if (!is.na(m2[1, 1])) {
-    val2 <- as.numeric(m2[1, 2])
-    val3 <- as.numeric(m2[1, 3])
-    if (val2 < 1000) {
-      result$coord_X <- val3
-      result$coord_Y <- val2
-    } else {
-      result$coord_X <- val2 / 100
-      result$coord_Y <- val3 / 100}
-    return(result)}
-  # --- PATTERN 3 (N / W) ---
-  m3 <- str_match(header_text, "\\s*(-?[[:digit:]]+)\\s*N(-?[[:digit:]]+)\\s*W")
-  if (!is.na(m3[1, 1])) {
-    result$coord_X <- as.numeric(m3[1, 1]) / 100
-    result$coord_Y <- as.numeric(m3[1, 2]) / 100
-    return(result)}
-  # --- PATTERN 10 (Fisso 10 caratteri) ---
-  m10 <- str_match(header_text, "(.{10})\\s+_")
-  if (!is.na(m10[1, 1])) {
-    raw_val <- m10[1, 2]
-    result$coord_X <- as.numeric(substr(raw_val, 1, 5)) / 100
-    result$coord_Y <- as.numeric(substr(raw_val, 6, 10)) / 100
-    return(result)}
-  return(result)}
-```
-
 # Object clima creation
+
+# Extracts spatial-temporal data for a single geographical point 
+# from a NetCDF raster file using the 'terra' package.
+
+```{r}
+extraction <- function(coor, file_nc, nome){
+  nc_pet <- rast(file_nc, subds = nome)
+  lon <- coor[1]
+  lat <- coor[2]
+  punto <- vect(matrix(c(lon, lat), ncol=2),)
+  pet_ext <- terra::extract(nc_pet, punto, ID = FALSE)
+  date_ext <- time(nc_pet)
+  data_x = format(date_ext, "%b-%Y")
+  df_clima <- data.frame( time = date_ext, data = data_x, var = as.numeric(pet_ext))
+  colnames(df_clima)[3] <- nome
+  df_finale <- df_clima[,c(2,3)]
+  return(df_finale)}
+```
+
+# Iterates over unique spatial points (pixels) and extracts multiple 
+# climate variables (SPEI, temperature, precipitation, PET) from 
+# NetCDF files located in the 'dati/' directory.
 
 ```{r}
 estrazione_clima <- function(df_unici) {
@@ -133,9 +663,314 @@ estrazione_clima <- function(df_unici) {
                                      by = "data", all = TRUE)}}
     lista_meteo_raw[[p_id]] <- df_pixel_accumulato
     if(i %% 50 == 0) cat("Processati", i, "pixel su", nrow(df_unici), "\n")}
+  df_pixel_accumulato <- df_pixel_accumulato[order(df_pixel_accumulato$time), ]
   return(lista_meteo_raw)}
 ```
 
+# metodo più veloce:
+
+```{r}
+library(terra)
+library(dplyr)
+
+# ==============================================================================
+# FUNZIONE 1: ESTRAZIONE SINGOLO PUNTO (Mantiene l'ordine temporale corretto)
+# ==============================================================================
+extraction <- function(coor, nc_raster, nome_var) {
+  # Creazione dello SpatVector punto WGS84
+  punto <- vect(matrix(coor, ncol = 2), crs = "+proj=longlat +datum=WGS84")
+  
+  # Estrazione valori temporali per il punto
+  valori <- as.numeric(terra::extract(nc_raster, punto, ID = FALSE))
+  
+  # Estrazione delle date reali (Date object)
+  date_ext <- time(nc_raster)
+  
+  # Dataframe con data vera (Date) e label formattata
+  df_clima <- data.frame(
+    time = date_ext,
+    data = format(date_ext, "%b-%Y"),
+    val  = valori
+  )
+  colnames(df_clima)[3] <- nome_var
+  
+  return(df_clima)
+}
+
+# ==============================================================================
+# FUNZIONE 2: ITERATORE SUI PIXEL (Caricamento ottimizzato dei raster)
+# ==============================================================================
+estrazione_clima <- function(df_unici, dir_dati = "DendroCrhAn") {
+  
+  file_clima <- c("spei01.nc", "CRU_TS_tmp.nc", "CRU_TS_tmn.nc", "CRU_TS_pre.nc", "CRU_TS_pet.nc")
+  nomi_var   <- c("spei", "tmp", "tmn", "pre", "pet")
+  
+  cat("Caricamento in memoria delle griglie raster...\n")
+  # Carichiamo i raster UNA SOLA VOLTA all'inizio della funzione
+  lista_raster <- list()
+  for(k in seq_along(file_clima)) {
+    path_nc <- file.path(dir_dati, file_clima[k])
+    lista_raster[[nomi_var[k]]] <- rast(path_nc)
+  }
+  
+  lista_meteo_raw <- list()
+  tot_pixel <- nrow(df_unici)
+  
+  cat("Inizio estrazione su", tot_pixel, "pixel unici...\n")
+  
+  for(i in 1:tot_pixel) {
+    p_id <- as.character(df_unici$pixel_id[i])
+    coor <- c(df_unici$longitude[i], df_unici$latitude[i])
+    
+    df_pixel_accumulato <- NULL
+    
+    for(var_name in nomi_var) {
+      r_obj <- lista_raster[[var_name]]
+      df_temp <- extraction(coor, r_obj, nome_var = var_name)
+      
+      if (is.null(df_pixel_accumulato)) {
+        df_pixel_accumulato <- df_temp
+      } else {
+        # Unione mantenendo la colonna 'time' (Date) per preservare l'ordine cronologico
+        df_pixel_accumulato <- merge(
+          df_pixel_accumulato, 
+          df_temp[, c("time", var_name)], 
+          by = "time", 
+          all = TRUE
+        )
+      }
+    }
+    
+    # Riordino finale garantito per data
+    df_pixel_accumulato <- df_pixel_accumulato[order(df_pixel_accumulato$time), ]
+    
+    # Salvataggio nella lista con chiave pixel_id
+    lista_meteo_raw[[p_id]] <- df_pixel_accumulato
+    
+    if(i %% 50 == 0 || i == tot_pixel) {
+      cat("Processati", i, "pixel su", tot_pixel, "\n")
+    }
+  }
+  
+  return(lista_meteo_raw)
+}
+```
+
+# da usare così
+
+```{r}
+library(dplyr)
+library(terra)
+
+# 1. Caricamento metadati essenziali con i pixel ID
+df_veg <- readRDS("DendroCrhAn/meta_essential.rds")
+
+# 2. Isolamento dei pixel unici
+df_pixel <- df_veg %>%
+  distinct(pixel_id, .keep_all = TRUE) %>%
+  select(pixel_id, longitude, latitude)
+
+# 3. Estrazione climatica multivariata
+clima <- estrazione_clima(df_pixel, dir_dati = "DendroCrhAn")
+
+# 4. Salvataggio della lista climatica
+saveRDS(clima, "DendroCrhAn/lista_clima.Rds")
+
+cat("Salvataggio completato! 'lista_clima.Rds' contiene le serie storiche per", length(clima), "pixel.\n")
+```
+
+# rwl series plot
+
+```{r}
+scostamento <- function(df, mod = FALSE){
+  if (nchar(df[1,1]) != 8) {stop("La prima colonna del dataframe deve contenere le date in formato gen-1901")}
+  df_due <- df 
+  colnames(df_due[1]) <- "data"
+  df_due <- df_due %>%
+    mutate (mese = as.factor(str_sub(data, start = 1, end = 3))) %>%
+    group_by (mese) %>%
+    mutate(across(where(is.numeric), ~ .x - mean(.x, na.rm = TRUE),
+                  .names = "dif_{.col}")) %>%
+    ungroup()
+  if (mod) {df_tre <- df_due %>%
+    mutate(across(starts_with("dif_"), abs))
+  } else {df_tre <- df_due}
+  df_qtr <- df_tre %>%
+    mutate(anno = as.numeric(str_sub(data, -4))) %>%
+    group_by(anno) %>%
+    summarise(across(starts_with("dif_"), ~ sum(.x, na.rm = TRUE),
+                     .names = "sum_{.col}")) %>%
+    ungroup()
+  return(df_qtr)}
+```
+
+
+```{r}
+plot_preparation <- function(RWI,spei_df) {
+  
+  ccf_multiple <- function(s1,altre_serie,nomi) {
+    correlazioni_max <- c()
+    lag_max <- c()
+    for (s_corrente in altre_serie) {
+      risultato_ccf <- ccf(s1, s_corrente, plot = FALSE, na.action = na.omit)
+      valori_acf <- as.numeric(risultato_ccf$acf)
+      valori_lag <- as.numeric(risultato_ccf$lag)
+      indice_max <- which.max(abs(valori_acf))
+      correlazioni_max <- c(correlazioni_max, round(valori_acf[indice_max],3))
+      lag_max <- c(lag_max, valori_lag[indice_max])}
+    matrice_risultati <- matrix(c(correlazioni_max, lag_max), nrow = 2, byrow = TRUE)
+    df_finale <- as.data.frame(matrice_risultati)
+    rownames(df_finale) <- c("Corr", "Lag")
+    colnames(df_finale) <- nomi
+    return(df_finale)}
+  
+  rwl <- common_interval(RWI)$rwl
+  rwl_bsgc <- common.interval(RWI, make.plot = FALSE)
+  det <- detrend(rwl, method = "Spline", nyrs = 30, f = 0.5)
+  it <- interval.trend(rwl, trend.thresh = 0, IT.thresh = 95, make.plot = FALSE)
+  BSGC <- bsgc(rwl_bsgc, make.plot = FALSE, maxlag = 5)
+  n_rep <- length(names(BSGC$neg))
+  df_bsgc <- data.frame(year=names(BSGC$neg),Methods=rep("BSGC",n_rep))
+  pointer_years_df <- it$out[it$out$nature<0,1,drop=FALSE]
+  pointer_years_df$Methods <- rep("IT",nrow(pointer_years_df))
+  df_py <- rbind(df_bsgc,pointer_years_df)
+  df_py$year <- as.numeric(df_py$year)
+  cron <- chron(det, biweight = TRUE, prewhiten = TRUE)
+  det <- tibble::rownames_to_column(det, var = "Anno")
+  det_long <- det %>%
+    tidyr::pivot_longer(
+      cols = -c(Anno),
+      names_to = "serie",
+      values_to = "valore" ) %>% as.data.frame()
+  det_long$Anno <- as.numeric(det_long$Anno)
+  det_long <- arrange(det_long, serie)
+  
+  cron_df <- data.frame(
+    Anno = as.numeric(rownames(cron)),
+    TRW = as.numeric(cron[, 1]))
+  min_old <- min(spei_df[,2], na.rm = TRUE)
+  max_old <- max(spei_df[,2], na.rm = TRUE)
+  spei_df[,2] <- ((spei_df[,2] - min_old) / (max_old - min_old)) + 1.5
+  colnames(spei_df) <- c("Anno","SPEI")
+  spei_df <- spei_df[spei_df$Anno %in% time(rwl),]
+  max_y <- max(c(spei_df$SPEI, cron_df$TRW), na.rm = TRUE)*1.05
+  min_y <- min(c(spei_df$SPEI, cron_df$TRW), na.rm = TRUE)*0.8
+  df_py <- df_py %>% mutate(
+    y_plot = case_when( Methods == "BSGC" ~ 2.60, Methods == "IT"   ~ 2.75))
+  corr <- left_join(cron_df,spei_df, by="Anno")
+  
+  if (nrow(df_py)!=0){
+    for (py_meth in unique(df_py$Methods)){
+      num <- ncol(corr)+1
+      corr[,num] <- rep(0,nrow(corr))
+      corr[corr$Anno %in% df_py[df_py$Methods==py_meth,"year"],num] <- 1
+      colnames(corr)[num] <- py_meth}
+    s1 <- corr[,2]
+    if (ncol(corr)<5){altre_serie <- list(s2=corr[,3], s3=corr[,4])
+    } else {altre_serie <- list(s2=corr[,3], s3=corr[,4], s4=corr[,5])}
+    nomi <- colnames(corr)[c(3:ncol(corr))]
+  } else {altre_serie <- list(s2=corr[,3])
+  nomi <- colnames(corr)[c(3)]}
+  df_corr <- ccf_multiple(s1,altre_serie,nomi)
+  df_corr$Misure <- c(max(det_long$Anno)-5,min_y)
+  return(list(rwi=det_long, master=cron_df, spei=spei_df, df=df_py, corr_df=df_corr))}
+
+RWI <- read.rwl("File/swit321.rwl")
+pix <- df_micro[df_micro$stand_id=="swit321.rwl","pixel_id"]
+spei_df <- as.data.frame(scostamento(clima[[pix]][,c(1,2)]))
+ogg_swit <- plot_preparation(RWI,spei_df)
+```
+
+# Cross correlation 
+
+```{r}
+correlazione_significativa_lag <- function(df_tax, sel_orders, max_lag = 4) {
+  # 1. Filtro per Genere
+  df_lavoro <- df_tax
+  if (!is.null(sel_orders)) {
+    df_lavoro <- df_lavoro %>% filter(gruppo_specie %in% sel_orders)
+  }
+  # 2. Funzione interna: Estrae solo i dati POSITIVI e SIGNIFICATIVI
+  get_sig_cor_data <- function(id_stand, id_pixel) {
+    id_s <- as.character(id_stand); id_p <- as.character(id_pixel)
+    if (!(id_s %in% names(crono)) | !(id_p %in% names(clima))) return(NULL)
+    tryCatch({
+      df_a <- crono[[id_s]]; df_b <- clima[[id_p]]
+      df_spei_t <- as.data.frame(scostamento(df_b[, c("data", "spei")]))
+      df_m <- merge(df_a, df_spei_t, by = "anno")
+      if (nrow(df_m) < 10) return(NULL)
+      ccf_res <- ccf(df_m$sum_dif_spei, df_m$rwl, lag.max = max_lag, plot = FALSE, na.action = na.pass)
+      n_obs <- sum(complete.cases(df_m))
+      soglia <- 1.96 / sqrt(n_obs)
+      # MODIFICA CRUCIALE: Teniamo solo cor > soglia (esclude negative e non sig)
+      return(data.frame(
+        stand_id = id_s,
+        lag = abs(as.numeric(ccf_res$lag)), 
+        cor = as.numeric(ccf_res$acf)
+      ) %>% filter(as.numeric(ccf_res$lag) <= 0, cor > soglia))
+    }, error = function(e) return(NULL))}
+  # 3. Elaborazione Dati
+  res_sig <- df_lavoro %>%
+    group_by(gruppo_specie) %>%
+    group_modify(~ {
+      bind_rows(mapply(get_sig_cor_data, .x$stand_id, .x$pixel_id, SIMPLIFY = FALSE))
+    }) %>% ungroup()
+  # 4. Calcolo Frequenze (per le colonne sienna)
+  n_siti_tot <- df_lavoro %>% group_by(gruppo_specie) %>% summarise(n_tot = n_distinct(stand_id), .groups = 'drop')
+  df_frequenze <- res_sig %>%
+    group_by(gruppo_specie, lag) %>%
+    summarise(freq_ass = n(), .groups = 'drop') %>%
+    left_join(n_siti_tot, by = "gruppo_specie") %>%
+    mutate(freq_rel = (freq_ass / n_tot) * 100)
+  # 5. Parametri Grafici
+  my_scale <- 50 
+  pos_jitter <- position_jitter(width = 0.25, seed = 123)
+  pal <- paletteer::paletteer_d("fishualize::Anisotremus_virginicus")[c(1,3)]
+  # 6. Costruzione Grafico
+  p <- ggplot(res_sig, aes(x = as.numeric(as.character(lag)), y = cor, color = gruppo_specie)) +
+    # Barre (senza jitter)
+    geom_col(data = df_frequenze, 
+             aes(x = as.numeric(as.character(lag)) + 0.4, y = freq_rel / my_scale),
+             inherit.aes = FALSE, fill = pal[2], alpha = 0.5, width = 0.15) +
+    # Linee e Punti (stesso jitter, stessi dati)
+    geom_linerange(aes(ymin = 0, ymax = cor, y = cor), 
+                   position = pos_jitter, alpha = 0.4, linewidth = 0.4) +
+    geom_point(position = pos_jitter, size = 1.5, alpha = 0.7) +
+    scale_y_continuous(
+      name = "Correlation Coefficient (r)",
+      expand = expansion(mult = c(0, 0.05)),
+      sec.axis = sec_axis(trans = ~ . * my_scale, name = "Significant Responses (%)")
+    ) +
+    # Definiamo i limiti qui: questo NON elimina i dati
+    coord_cartesian(ylim = c(0, 0.8)) +
+    scale_x_continuous(breaks = seq(0, max_lag, 1), name = "Lag (Years)") +
+    paletteer::scale_color_paletteer_d("fishualize::Anisotremus_virginicus") +
+    facet_wrap(~gruppo_specie, ncol = 1) + 
+    theme_minimal() +
+    labs(
+      title = "Species-Specific Patterns of Significant Cross-Correlations"
+    ) +
+    theme(
+      legend.position = "none",
+      panel.grid.minor = element_blank(),
+      panel.grid.major.x = element_blank(),
+      axis.line.x = element_line(color = "black"),
+      axis.text.x = element_text(color = "black"),
+      axis.ticks.x = element_line(color = "black"),
+      axis.title.x = element_text(color = "black"),
+      axis.line.y.left = element_line(color = pal[1]),
+      axis.text.y.left = element_text(color = pal[1]), # Numeri etichette
+      axis.ticks.y.left = element_line(color = pal[1]),
+      axis.title.y.left = element_text(color = pal[1], face = "bold"),
+      axis.line.y.right = element_line(color = pal[2]),
+      axis.text.y.right = element_text(color = pal[2]),
+      axis.ticks.y.right = element_line(color = pal[2]),
+      axis.title.y.right = element_text(color = pal[2],
+                                        face = "bold", margin = margin(l = 10)),
+      strip.text = element_text(face = "bold.italic", size = 12))
+  return(list(dati = res_sig, freq = df_frequenze, grafico = p))
+}
+```
 
 # Preparation DLNM
 

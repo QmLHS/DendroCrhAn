@@ -1,0 +1,402 @@
+---
+title: "Answer"
+author: "Giacomo Colasurdo"
+output: pdf_document
+---
+
+# download rwl series
+
+```{r include=FALSE}
+library(httr)
+library(rvest)
+library(stringr)
+library(magrittr)
+```
+
+```{r include=FALSE}
+url = "https://www.ncei.noaa.gov/pub/data/paleo/treering/measurements/europe/"
+# select `download = TRUE` to download file in folder: File
+# Archetype is the list of name files.
+archetype <- download_files(url,download = FALSE)
+```
+
+# Sample depth
+
+```{r include=FALSE}
+library(dplR)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+```
+
+```{r}
+stand_ids_disponibili <- list.files("File/")
+
+# Genera il dataframe cumulativo su tutti i siti
+df_long_finale <- prepara_df_disponibilita(
+  stand_ids  = stand_ids_disponibili, 
+  folder     = "File/",
+  start_year = 1900, 
+  end_year   = 2024
+)
+```
+
+```{r}
+p_cumulativo <- ggplot(df_long_finale, aes(x = Anno, y = Frequenza_Relativa, color = Tipo_Soglia)) +
+  geom_line(linewidth = 1.3) + 
+  scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, 10), labels = function(x) paste0(x, "%")) +
+  scale_color_manual(
+    values = c("Soglia_6_Alberi" = "lightsalmon", "Common_Interval_100" = "steelblue"),
+    labels = c("100% Series (Common Interval)", "Min. 6 Trees (Robust Threshold)")
+  ) +
+  labs(
+    title = "Relative Frequency of Site Availability",
+    subtitle = paste("Based on", length(stand_ids_disponibili), "valid sites"),
+    x = "Year", y = "Percentage of Total Sites", color = "Inclusion Criteria"
+  ) +
+  theme_bw() + 
+  theme(legend.position = "bottom", plot.title = element_text(hjust = 0.5, face = "bold"))
+
+print(p_cumulativo)
+ggsave("DendroCrhAn/sample_death_cumulative.pdf", plot = p_cumulativo, width = 9, height = 6, dpi = 300)
+```
+
+
+# Stand Processing
+
+dati/ITRDBmetadata12January2022.txt
+
+```{r}
+library(dplR)
+library(stringr)
+```
+
+```{r}
+crono <- elabora_cronologie_rwl(dir_file = "File")
+saveRDS(crono, "dati/cronologie_tutti_stand.rds")
+```
+
+# Metadata
+
+```{r}
+library(terra)
+```
+
+```{r}
+output_spaziale <- estrai_metadati_e_master(
+  stand_validi  = names(crono),
+  path_metadata = "dati/ITRDBmetadata12January2022.txt",
+  dir_file      = "File")
+df_master_grezzo <- output_spaziale$df_master
+punti_geografici_vect <- output_spaziale$punti_vect
+```
+
+# Coordinate solution
+
+```{r}
+audit_completo <- gestisci_punti_in_acqua(df_master_grezzo)
+```
+
+Supplementary Material for the "Coordinate Solution" Chapter of the Exploration_checks.rmd File
+
+```{r}
+audit_completo[audit_completo$stand_id=="fran10.rwl",c("lon_snap","lat_snap")] <- c(4.483,52.13)
+correction <- c(rep(TRUE,5),rep(FALSE,7))
+names(correction) <- audit_completo$stand_id
+```
+
+```{r}
+risultato_finale <- applica_correzioni_coordinate(
+  df_audit_totale = df_master_grezzo,
+  df_audit_acqua  = audit_completo,
+  vec_inversione  = correction)
+
+punti_geografici_corretti <- risultato_finale$vect
+df_master <- risultato_finale$audit
+
+saveRDS(punti_geografici_corretti, "dati/punti_geografici_corretti.rds")
+saveRDS(df_master, "dati/tabella_master_ITRDB_corretta.rds")
+```
+
+# Climatic zone 
+
+```{r}
+library(dplyr)
+```
+
+Group BS: arid climates
+Group C is the union of
+Group Cf: temperate climates and Group Cs: Mediterranean climates
+Group D: cold continental climates
+Group E: polar climates
+
+```{r}
+kg_map <- rast("KGC/Map_KG-Global/KG_1986-2010.grd")
+clima_valori <- extract(kg_map, df_master[, c("longitude", "latitude")])
+meta <- cbind(df_master, clima_valori[, c("layer")])
+colnames(meta)[ncol(meta)] <- "ID"
+meta <- left_join(meta, rat, by="ID")
+colnames(meta)[(ncol(meta)-1):ncol(meta)] <- c("zona_id","climate_zona")
+df_meta <- meta[, c("stand_id", "longitude", "latitude", "altitude",
+                    "zona_id", "climate_zona", "species", "header_text")]
+# An examination of the missing values reveals that they are TICO species
+df_meta[is.na(df_meta$species),"species"] <- "TICO"
+saveRDS(df_meta, "dati/metadata_zone_climatiche.rds")
+```
+
+# Taxonomies
+
+More datails in Exploration_checks.Rmd File to chapter "Combine species information conifers or broadleaves"
+
+```{r include=FALSE}
+library(terra)
+library(dplyr)
+library(stringr)
+```
+
+```{r}
+df_meta <- readRDS("dati/metadata_zone_climatiche.rds")
+```
+
+```{r}
+Tax <- leggi_tasso(file_txt = "dati/Tasso.txt", df_meta$species)
+# Replace missing species names with the corresponding Genus name
+Tax[is.na(Tax$Species),"Species"] <- Tax[is.na(Tax$Species),"Genus"]
+saveRDS(Tax, "dati/tassonomia.rds")
+```
+
+```{r}
+# Join and Reclassification
+tax_prep <- Tax %>% 
+  rename(species = ID_Specie, Species_name = Species)
+
+veg_prep <- left_join(df_meta, tax_prep, by = "species")
+Genus_target <- c("Pinus","Quercus","Fagus")
+veg <- veg_prep %>% 
+  mutate(
+    gruppo_climatico = case_when(
+      grepl("^BS", climate_zona) ~ "B",
+      grepl("^C", climate_zona) ~ "C",
+      grepl("^D",  climate_zona) ~ "D",
+      grepl("^ET", climate_zona) ~ "E")) %>%
+  filter(Genus %in% Genus_target) %>%
+  rename(gruppo_specie = Genus)
+
+# Final Saving of meta_essential
+df_veg <- veg[, c("stand_id", "gruppo_climatico", "gruppo_specie", "longitude", "latitude")]
+saveRDS(df_veg, "dati/meta_group.rds")
+```
+
+# extraction of pixel
+
+ - File esterni
+meta_group.rds
+CRU_TS_pre.nc
+
+```{r}
+library(ncdf4)
+```
+
+```{r}
+df_veg <- readRDS("dati/meta_group.rds")
+nc_data <- nc_open("dati/CRU_TS_pre.nc")
+map_lon <- ncvar_get(nc_data, "lon")
+map_lat <- ncvar_get(nc_data, "lat")
+nc_close(nc_data)
+```
+
+```{r}
+find_pixel_index <- function(lon, lat, map_lon, map_lat) {
+  idx_lon <- which.min(abs(map_lon - lon))
+  idx_lat <- which.min(abs(map_lat - lat))
+  return(paste(idx_lon, idx_lat, sep = "_"))}
+```
+
+```{r}
+df_veg$pixel_id <- mapply(find_pixel_index, 
+                          df_veg$longitude, 
+                          df_veg$latitude, 
+                          MoreArgs = list(map_lon = map_lon, map_lat = map_lat))
+saveRDS(df_veg, "dati/meta_essential.rds")
+```
+
+# Object clima creation
+
+ - Oggetti esterni
+df_tax — Dataframe di partenza che deve contenere almeno le colonne: pixel_id, longitude e latitude
+ - File esterni
+spei01.nc
+CRU_TS_tmp.nc
+CRU_TS_tmn.nc
+CRU_TS_pre.nc
+CRU_TS_pet.nc
+
+```{r}
+library(dplyr)
+library(terra)
+```
+
+```{r}
+df_veg <- readRDS("dati/meta_essential.rds")
+df_pixel <- df_veg %>%
+  distinct(pixel_id, .keep_all = TRUE) %>%
+  select(pixel_id, longitude, latitude)
+clima <- estrazione_clima(df_pixel)
+saveRDS(clima, "dati/lista_clima.Rds")
+```
+
+# Cross Correlation
+
+```{r}
+correlazione_significativa_lag(df_veg,sel_orders = "Quercus")
+correlazione_significativa_lag(df_veg,sel_orders = "Pinus")
+correlazione_significativa_lag(df_veg,sel_orders = "Fagus")
+```
+
+
+# Preparation DLNM
+
+```{r}
+library(dplyr)
+library(stringr)
+library(lubridate)
+```
+
+```{r}
+df_veg <- readRDS("dati/meta_essential.rds")
+```
+
+
+```{r}
+dlnm_spei_fagus <- prepara_dlnm_misto(df_veg, var_meteo = "spei", var_ctrl = "tmn",
+                                     month_n = 9, g_clima = NULL,
+                                     g_specie = "Fagus", lag_n = 21)
+dlnm_spei_quercus <- prepara_dlnm_misto(df_veg, var_meteo = "spei", var_ctrl = "tmn",
+                                     month_n = 9, g_clima = NULL,
+                                     g_specie = "Fagus", lag_n = 21)
+dlnm_spei_pinus <- prepara_dlnm_misto(df_veg, var_meteo = "spei", var_ctrl = "tmn",
+                                     month_n = 9, g_clima = NULL,
+                                     g_specie = "Fagus", lag_n = 21)
+```
+
+```{r}
+saveRDS(dlnm_spei_fagus,"dati/dlnm_21spei_all_tmn_Fagus.rds")
+saveRDS(dlnm_spei_quercus,"dati/dlnm_21spei_all_tmn_Fagus.rds")
+saveRDS(dlnm_spei_pinus,"dati/dlnm_21spei_all_tmn_Fagus.rds")
+```
+
+```{r}
+faggio <- readRDS("dati/dlnm_21spei_all_tmn_Fagus.rds")
+quercia <- readRDS("dati/dlnm_21spei_all_tmn_Quercus.rds")
+pino <- readRDS("dati/dlnm_21spei_all_tmn_Pinus.rds")
+```
+
+```{r}
+faggio_auto <- termine_auto(faggio$df, faggio$mat)
+controllo(faggio_auto, report = FALSE, rwl_prev = TRUE)
+faggio_auto$df$ID <- as.factor(faggio_auto$df$ID)
+quercia_auto <- termine_auto(quercia$df, quercia$mat)
+controllo(quercia_auto, report = FALSE, rwl_prev = TRUE)
+quercia_auto$df$ID <- as.factor(quercia_auto$df$ID)
+pino_auto <- termine_auto(pino$df, pino$mat)
+controllo(pino_auto, report = FALSE, rwl_prev = TRUE)
+pino_auto$df$ID <- as.factor(pino_auto$df$ID)
+```
+
+# Run the model
+
+```{r}
+library(dlnm)
+library(mgcv)
+library(splines)
+```
+
+```{r}
+cb_faggio <- crossbasis(faggio_auto$mat, lag = 20,
+                       argvar = list(fun = "ns", df = 2), 
+                       arglag = list(fun = "ns", df = 6))
+model_faggio <- bam(rwl ~ cb_faggio + rwl_prev +
+                   s(ID, bs = "re") +
+                   s(anno, bs = "ps", k = 20),
+                   family = Gamma(link = "log"), 
+                   data = faggio_auto$df,
+                   method = "fREML",
+                   discrete = TRUE)
+pred_faggio <- get_dlnm_pred(model_faggio, cb_faggio, cb_name = "cb_faggio")
+```
+
+```{r}
+cb_quercia <- crossbasis(quercia_auto$mat, lag = 20,
+                       argvar = list(fun = "ns", df = 2), 
+                       arglag = list(fun = "ns", df = 6))
+model_quercia <- bam(rwl ~ cb_quercia + rwl_prev +
+                   s(ID, bs = "re") +
+                   s(anno, bs = "ps", k = 20),
+                   family = Gamma(link = "log"), 
+                   data = quercia_auto$df,
+                   method = "fREML",
+                   discrete = TRUE)
+pred_quercia <- get_dlnm_pred(model_quercia, cb_quercia, cb_name = "cb_quercia")
+```
+
+```{r}
+cb_pino <- crossbasis(pino_auto$mat, lag = 20,
+                       argvar = list(fun = "ns", df = 2), 
+                       arglag = list(fun = "ns", df = 6))
+model_pino <- bam(rwl ~ cb_pino + rwl_prev +
+                   s(ID, bs = "re") +
+                   s(anno, bs = "ps", k = 20),
+                   family = Gamma(link = "log"), 
+                   data = pino_auto$df,
+                   method = "fREML",
+                   discrete = TRUE)
+pred_pino <- get_dlnm_pred(model_pino, cb_pino, cb_name = "cb_pino")
+```
+
+# Show the charts
+
+```{r}
+library(ggplot2)
+```
+
+```{r}
+mesi_sin <- c("sep", "aug", "jul", "jun", "may", "apr", "mar", "feb", "jan") 
+mesi_cos <- c("dec", "nov", "oct")
+mesi_eng <- c()
+for (anno in c(0:2))
+{mesi_eng <- c(mesi_eng,str_replace_all(paste(mesi_sin,"-",anno), " ", ""),
+                        str_replace_all(paste(mesi_cos,"-",anno+1), " ", ""))}
+```
+
+```{r}
+nomi <- c("Pinus","Quercus","Fagus")
+confronto_lag(lista_pred = list(pred_pino,pred_quercia,pred_faggio),
+              valore_spei = 2.5, etichette_mesi = mesi_eng, lag_n=21,
+              nomi_gruppi = nomi)
+ggsave(filename = "gasparrini_genus_pos.pdf",
+       device = "pdf",width = 7, height = 5,  units = "in",dpi = 300 )
+```
+
+```{r}
+png("gasparrini_genus_neg.png", width = 7, height = 5, units = "in", res = 300)
+print(confronto_lag(lista_pred = list(pred_pino,pred_quercia,pred_faggio),
+              valore_spei = -2.5, etichette_mesi = mesi_eng, lag_n=21,
+              nomi_gruppi = nomi))
+dev.off()
+```
+
+```{r}
+grafico_unito(pred_pino,pred_quercia,pred_faggio, mesi=mesi_eng, nomi=nomi,
+              titolo="Lagged Effects of SPEI on Tree Growth by Genus")
+ggsave(filename = "gasparrini_genus.pdf", 
+       device = "pdf",width = 7, height = 10,  units = "in", dpi = 300 )
+```
+
+
+```{r}
+png("gasparrini_genus.png", width = 7, height = 6, units = "in", res = 300)
+print(grafico_unito(pred_pino,pred_quercia,pred_faggio, mesi=mesi_eng, nomi=nomi,
+              titolo="Lagged Effects of SPEI on Tree Growth by Genus"))
+dev.off()
+```
+
