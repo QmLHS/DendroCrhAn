@@ -1,5 +1,5 @@
-* Monthly tree-growth variations after extreme drought were modeled across Europe.
-* Data from 946 sites were analyzed using distributed lag non-linear models.
-* Water stress mostly impacts trees in previous late summer and current spring.
-* Beech (Fagus sylvatica) is the genus most vulnerable to severe water deficit.
-* Arid and Mediterranean forests show the highest sensitivity to extreme events.
+* Monthly tree-growth variations following extreme drought were modeled across Europe.
+* Continental-scale application of distributed lag non-linear models (DLNMs) to ITRDB tree-ring data.
+* Identified season-specific legacy effects across major European tree species.
+* Fagus sylvatica shows lower drought resilience compared to co-occurring species.
+* Arid and Mediterranean ecosystems face the highest vulnerability to extreme events.
