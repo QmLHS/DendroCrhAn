@@ -1,0 +1,27 @@
+Package: DendroCrhAn
+Title: Analysis of Dendroclimatology Data
+Version: 1.2.0
+Authors@R: c(
+    person("Giacomo", "Colasurdo", role = "aut", email = "giacomo@example.com"),
+    person("Dario", "Pescini", role = c("aut", "cre"), email = "dario@example.com")
+  )
+Description: Follow the Analysis on paper: Climate response of tree radial growth 
+    to drought stress in Europe: a multi-site approach using ITRDB.
+License: GPL-3
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+URL: https://github.com/QmLHS/DendroCrhAn
+BugReports: https://github.com/QmLHS/DendroCrhAn/issues
+Imports: 
+    dlnm,
+    dplyr,
+    dplR,
+    ggplot2,
+    grDevices,
+    lubridate,
+    paletteer,
+    pointRes,
+    stats,
+    stringr,
+    terra
+RoxygenNote: 7.3.1
