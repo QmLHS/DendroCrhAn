@@ -1,0 +1,445 @@
+\documentclass[12pt, a4paper]{article} 
+
+% --- ESSENTIAL PACKAGES AND LANGUAGE ---
+\usepackage[T1]{fontenc} 
+\usepackage[english]{babel} 
+
+% --- GRAPHICS AND IMAGES ---
+\usepackage[final]{graphicx}
+\usepackage{subcaption}
+\usepackage{float}
+\usepackage{pdfpages}
+
+% --- MATHEMATICAL CONSTRUCTS ---
+\usepackage{amsmath, amssymb}
+
+% --- LAYOUT, MARGINS, AND LINE SPACING ---
+\usepackage{geometry}
+\geometry{margin=3cm} 
+\usepackage{setspace} 
+\doublespacing 
+\usepackage{booktabs} 
+\usepackage{lmodern} 
+
+\usepackage{authblk}
+
+\usepackage[hidelinks]{hyperref} 
+\usepackage[english]{cleveref}
+
+% --- BIBLIOGRAFY ---
+\usepackage{csquotes}
+
+\usepackage[style=apa, backend=biber]{biblatex}
+\addbibresource{paper.bib}
+
+% --- DATI OF DOCUMENT ---
+\title{\textbf{Climate response of tree radial growth to drought stress in Europe: a multi-site approach using ITRDB.}}
+
+\author[a]{\textbf{Giacomo Colasurdo}}
+\author[a,*]{\textbf{Dario Pescini}}
+\author[a]{\textbf{Antonella Zambon}}
+\author[b]{\textbf{Rubén D. Manzanedo}}
+
+\affil[a]{Dipartimento di Statistica e Metodi Quantitativi, Università degli Studi di Milano-Bicocca, Piazza della Scienza 1, 20126 Milano, Italy}
+\affil[b]{Institute of Plant Sciences, University of Bern, Altenbergrain 21, 3013 Bern, Switzerland} 
+
+\affil[*]{Corresponding author. Email: \texttt{dario.pescini@unimib.it}}
+
+\date{}
+
+% --------------------
+% Begin document
+% --------------------
+\begin{document}
+
+\maketitle
+\thispagestyle{empty}
+
+\begin{abstract}
+\noindent
+Due to increasing severe droughts and anomalous heatwaves, this study investigates tree growth variability at a monthly scale, evaluating the impact of climatic conditions throughout the growing seasons during the first two years following an extreme event. Data from 946 sites across Europe were utilized, covering major tree species (\textit{Fagus sylvatica}, \textit{Quercus} spp., and \textit{Pinus} spp.). After an initial annual correlation analysis between the Standardized Precipitation-Evapotranspiration Index (SPEI) and Tree-Ring Width (TRW), a Distributed Lag Non-linear Model (DLNM) was applied to investigate species-specific water sensitivity within individual growing seasons, accounting for delayed climatic effects.
+
+The results demonstrate a strong influence of extreme water conditions on tree rings. Seasonal analysis reveals that water stress exerts a greater impact in the late summer of the previous year, whereas in the current year, maximum vulnerability is concentrated during spring and summer. Among the genera, Fagus is the most affected by water deficit, making it the most at risk in the coming years. Furthermore, climatic zone comparisons highlight that water availability is a limiting factor primarily in arid and Mediterranean regions. Conversely, cold-climate areas, such as Alpine and Boreal zones, show a slight growth contraction even under conditions of water excess, suggesting different response dynamics for these ecosystems.
+\end{abstract}
+\vspace{0.5cm}
+\noindent \textbf{Keywords:} SPEI; Tree-Ring Width (TRW); Distributed Lag Non-linear Model (DLNM); Drought legacy effects; K\"oppen-Geiger macro-areas; Fagus sylvatica; ITRDB.
+
+\newpage
+
+% --------------------
+% Introduction
+% --------------------
+
+\section{Introduction}
+
+In recent years, we have witnessed relentless climate change driven by the continuous rise in global temperatures \parencite{grant2025}. The extent of areas affected by anomalous heatwaves is now ten times greater than levels recorded in 1960 \parencite{hansen2012}. In Europe, it is emblematic that the five most extreme heatwaves recorded since 1870 have all occurred after 2000 \parencite{barriopedro2011}. In addition to increased intensity, the duration of these heatwaves has also grown significantly, confirming a trend toward increasingly extreme climatic conditions \parencite{martinez-villalobos2025}.
+
+Among the most damaging and costly consequences of climate change are extreme weather events, such as severe droughts, heatwaves, and late spring frosts \parencite{vitasse2019}. Indeed, the timing of leaf-out in relation to late frosts can represent a significant stress factor, particularly when an unusually long warm spell in early spring induces premature vegetation growth—the so-called false springs—causing heavy damage to new leaves and developing buds \parencite{gusain2026}. Furthermore, it has been observed that false springs, by damaging the leaves and the plant's photosynthetic apparatus, also compromise development and photosynthesis in subsequent years \parencite{wang2025}. Similarly, an exceptionally prolonged and severe drought during the growing season can trigger a defense response in trees, forcing stomatal closure to conserve water. This results in a halt in new wood production, with the potential to impair growth in following years \parencite{martinez-sancho2022}.
+
+However, the consequences for tree growth vary significantly depending on the intensity and exact timing of these extreme events, as well as the species and geographical area involved \parencite{gazol2018, vitasse2019, worbes1999}. Consequently, projections suggest that trees at lower elevations in temperate areas may be more affected by heatwaves in the coming decades, while trees at higher elevations exposed to harsher climates could be more susceptible to spring frosts.
+
+Although extreme climatic events are by definition rare, we are currently seeing a continuous increase in their frequency. Moreover, these events are projected to increase not only in frequency but also in intensity, duration, and spatial extent \parencite{ebi2021}. As a result, the impacts and risks associated with climate change are expected to rise significantly over the coming years and decades. The damage derived from extreme weather is not limited to reductions in forest growth rates; its impact is far more extensive, affecting agriculture and forestry \parencite{kirilenko2007}, significantly altering water availability and ecosystems, and causing substantial economic and social repercussions \parencite{averbeck2026, mohr2025}.
+
+Tree growth rings constitute authentic archives of stem development. Indeed, their width indicates the progressive growth of the trunk that occurred during past vegetative seasons. The collection of ring samples and their subsequent dating allow for the study of tree species growth across various global climatic contexts, making these rings ideal parameters for reconstructing the climate of past centuries \parencite{novakova2021} as well as for forest growth models \parencite{wang2025}.
+
+Many studies have highlighted how climatic and environmental conditions play a key role in the radial growth and spatial distribution of a wide range of tree species \parencite{martinezdelcastillo2022}. It has been observed that extreme climatic events can cause severe damage to trees, not only in the form of intense developmental stress but also by inducing greater vulnerability to pathogens and forest infestations \parencite{allen2010}, even leading to the cessation of vital functions \parencite{anderegg2019}. All of this is reflected in a drastic variation in tree ring parameters \parencite{bauwe2015}, which affects not only the width but also other characteristics such as maximum wood density \parencite{michelot2012} and the composition of stable isotopes in cellulose \parencite{gessler2018, nagavciuc2020}. One aspect emerging from studies on dendrochronological series has revealed that the effects of extreme climatic events on growth do not end immediately. Instead, they show repercussions that persist over time even beyond the conclusion of the event itself \parencite{bouwman2025, huang2018}. In some cases, it has even been observed that impacts accumulate progressively, leading to drastic increases in vulnerability to subsequent extreme events \parencite{muller2022, wang2025}.
+
+In this study, we utilize Tree-Ring Width (TRW) data obtained from the ITRDB international archive \parencite{zhao2019}, alongside European climatic data related to the tree sampling sites to present an analysis that explores the relationship between climate and forest growth. The objectives of this study are:
+
+\begin{itemize}
+\item Analyze the influence of climate, through primary meteorological data, as a function of the impact shown on ring growth.
+\item Identify the period of maximum climate incidence on tree growth within the vegetative season.
+\item Investigate how the impact of climate on tree growth differs among the most common European species (\textit{Fagus}, \textit{Quercus}, \textit{Pinus}).
+\item Study how vegetation across different European climatic areas reacts to climate variations at a territorial level.
+\end{itemize}
+
+For example, studies on European forests show that resistance and resilience to drought and late frosts vary strongly among species \parencite{vitasse2019} and that the response to drought differs between Mediterranean, temperate, and continental biomes \parencite{gazol2018}, with further variations linked to local conditions and past climatic history \parencite{gazol2020}. Furthermore, it appears that the effect of extreme climatic events on growth varies depending on their intensity, the period of the season in which they occur, and the specific characteristics of the species and geographical context, and it is precisely these additional sources of variability that this study intends to account for and investigate.
+
+% --------------------
+% Methods
+% --------------------
+\section{Materials and Methods}
+
+\subsection{Climate data}
+
+Tree-ring data have thus proven to be fundamental indicators for understanding the adaptive responses of different tree species to climate change \parencite{vieira2021}. The impact of environmental variability and extreme climatic events on the growth of woody plants can be evaluated using Lloret’s indices \parencite{Lloret2011}. These parameters allow for the measurement—based on tree-ring growth series—of the plant's vegetative response to climatic stress events. This includes, for example, resistance, defined as the observed growth reduction in the plant during the extreme year compared to pre-event growth. A decrease in a tree's capacity to recover after a severe drought can be indicative of growth decline and an increased risk of mortality. It is therefore essential to evaluate both the short- and long-term responses of major tree species. Alongside Lloret’s indices, other alternative indices are considered for their ability to account for the temporal dimension, particularly the persistence of damaging effects experienced following the event.
+
+Unusually prolonged and severe droughts can act as major tipping points. Consequently, it is crucial to accurately identify the years in which extreme climatic events occur, known as pointer years, in order to examine the magnitude of the growth impact caused by the extreme event using both Lloret’s and alternative indices. However, the existence of multiple methods for identifying extreme years, based on different approaches and arbitrary thresholds, hinders the objective and consistent identification of pointer years across methods \parencite{buras2020}. Furthermore, it must be noted that identifying extreme years based on growth reductions and subsequently studying the response using the same growth data leads to a lack of independence between the response variable (growth) and the predictive variable (the response index) \parencite{rubio-cuadrado2025}. This could, in fact, lead to overlooking the impact, however slight, of drought years that did not necessarily result in a significant growth reduction. In light of this, many studies have turned to alternative methods for identifying years with extreme climatic events, moving away from tree-ring series (to be considered solely as the response) and instead utilizing external climatic variables.
+
+\begin{figure}[!ht]
+\centering
+\includegraphics[width=0.86\textwidth]{grafico_rwi_swit.pdf}
+\caption{Dendrochronological site series showing individual detrended Fgrowth series (gray), the site master chronology (yellow), the annual aggregation of the SPEI1 climatic index (red), and the detected pointer years using the Interval Trend method (turquoise) and BSGC (pink).} 
+\label{fig:serie}
+\end{figure}
+
+\begin{figure}[!ht]
+\centering
+\includegraphics[width=0.85\textwidth]{sample_depth.pdf}
+\caption{Sample depth graph of the series for the site represented in \cref{fig:serie}. The plot shows the years in which all series from the site present a radial growth value. The red dashed line indicates when the sample reaches the threshold of 6 trees (corresponding to 12 series) with concurrent observations.}
+\label{fig:sample}
+\end{figure}
+
+The standardized precipitation evapotranspiration index (SPEI) is a powerful indicator of regional water balance, capable of capturing variations in temperature and evapotranspiration \parencite{vicente-serrano2010}. The climate index is determined starting from the monthly water balance, calculated as the difference between precipitation and potential evapotranspiration ($P - PET$). The index is distinguished by its use of a broad spectrum of local meteorological variables; in addition to precipitation, it also accounts for humidity, temperature, and solar radiation. Once the balance is obtained, the data can be aggregated by summing multiple months, thereby facilitating the observation of water conditions relative to a specific period as well as different groundwater conditions. Finally, the series is standardized using a three-parameter log-logistic distribution, ensuring robust consistency over the years. The result is a series ranging from -2.5 to 2.5; the closer the value is to the minimum, the more severe the drought conditions recorded in the area, deviating significantly from the mean territorial water balance. Conversely, a high value signifies water abundance well above average. 
+
+Despite being considered an important drought indicator and being widely adopted in dendrochronological studies, it has been criticized for not always reflecting the site's actual water supply conditions \parencite{zang2020}. Zang bases this criticism on the standardization of the index. Since the SPEI consists of the balance between precipitation and evapotranspiration ($P - PET$), a negative value signifies a territorial water deficit and vice versa for a positive value. Standardization would effectively erase this information by shifting all values into a range of $\pm 2.5$, potentially transforming a negative balance into a positive index value in arid biomes, and a positive balance into a negative index value in more humid regions. However, further studies disagree with this position, highlighting the relevant difference between aridity and drought; the latter, in fact, consists of the deviation from the average water conditions in a given area \parencite{slette2020}. In light of these findings, this study utilized the standardized version of the SPEI index as a climatic signal relative to regional water availability. Indeed, the standardization of the index made it possible to perform a comparison across different geographical areas.
+
+The SPEI climatic index data recorded across the European continent originate from the Consejo Superior de Investigaciones Científicas (CSIC), contained within version 2.11 of the dataset. To preserve the maximum resolution of the water signal relative to the period preceding growth, the index was adopted with a monthly time scale (SPEI1) without any multi-month aggregation, thus maintaining the data at the minimum temporal scale. The dataset employed possesses a spatial resolution of 0.5 degrees and temporal coverage from January 1901 to December 2024.
+
+As reported in other studies \parencite{jeong2021, bowman2013}, the use of the ITRDB archive has highlighted certain methodological criticalities, primarily due to the lack of precision in the metadata of the sampling sites. Indeed, several inconsistencies emerged between the coordinates in the available metadata and the Tucson files. To ensure consistency between the ITRDB sites, the SPEI index used, and the subdivision into climatic areas, a geographic data control procedure was performed. Sites whose coordinates fell into the sea were corrected, where sufficient, by inverting the sign of the coordinate following cross-checks between the header of the Tucson data files and the archive metadata available online. In other cases, coordinates were repositioned to the nearest land surface cell.
+
+In an effort to study the response of radial development to local climatic conditions across different European climatic areas, the Köppen-Geiger international geographic classification was adopted \parencite{peel2007}. Given the high fragmentation of European climatic zones \cref{fig:mappa}, some of which lack relevant dendrochronological sampling \cref{tab:numerosita}, it became necessary to merge them into macro-areas. This grouping was based on the same Köppen-Geiger system, leading to the identification of four main regions: the climatic zone identified by the letter \textbf{E} includes the Alps and northern Scandinavia, characterized by a polar climate; the letter \textbf{D} identifies the foothills of the Alps along with the rest of the Scandinavian and Russian territory, characterized by a cold continental climate; the letter \textbf{C} distinguishes temperate and Mediterranean climates, identifying the rest of the European continent, with the exception of some arid areas in southern Spain and Turkey, which are finally indicated by the letter \textbf{B}.
+
+\begin{figure}[!ht]
+\centering
+\includegraphics[trim={4.8cm 0cm 0cm 2cm}, clip, width=1\textwidth]{Mappa_ITRDB.pdf}
+\caption{Geographical location of sampling sites divided by genus \textit{Pinus} spp., \textit{Quercus} spp., and \textit{Fagus sylvatica} with Köppen-Geiger international geographical classification.}
+\label{fig:mappa}
+\end{figure}
+
+\subsection{Tree-ring data}
+Annual series of Tree-Ring Width (TRW) obtained from the International Tree-Ring Data Bank (ITRDB) \parencite{zhao2019} were used as a biological indicator of tree growth. Raw, unprocessed data in Tucson format were employed for the analysis, relating to 946 sites distributed across the entire European continent and belonging to the three most represented genera in the archive: \textit{Pinus}, \textit{Fagus}, and \textit{Quercus}. Taxonomic resolution varies according to the availability of original metadata; the genus \textit{Fagus} is represented exclusively by the species \textit{Fagus sylvatica}, while for oaks, in the absence of specific information on the sampled species, a genus-level grouping (\textit{Quercus} spp.) was performed. This choice is motivated by the need to maximize the statistical power of the dataset and to ensure the geographical representativeness of the analysis, avoiding the exclusion of numerous sites lacking a unique distinction between related species, such as between \textit{Quercus robur} and \textit{Quercus petraea}. For methodological consistency, the genus \textit{Pinus} was also considered as a whole, although it includes several species, the majority of which consist of populations of \textit{Pinus sylvestris}, as detailed in \cref{tab:numerosita}.
+
+The time interval of the study was limited to the period 1901 to 2024, a choice aimed at ensuring an optimal overlap between the dendrochronological chronologies and the climatic data used in the analyses (see Section 2.1).
+
+\begin{figure}[!ht]
+\centering
+\makebox[\textwidth][c]{
+\includegraphics[width=1\textwidth]{frequenza_per_specie_gruppo_climatico.pdf} }
+\caption{Sample frequency: Number of sites per genus \textit{Pinus} spp., \textit{Quercus} spp., and \textit{Fagus sylvatica} and per climate zone: arid zone (\textbf{B}), temperate zones (\textbf{C}), continental zone (\textbf{D}), and polar zone (\textbf{E}).}
+\label{fig:freq}
+\end{figure}
+
+\begin{table}[!ht]
+\centering
+\caption{Summary table of site frequencies by genus and climate zone.}
+\label{tab:numerosita}
+\begin{tabular}{lrrrr} % Ridotto a 4 colonne di dati (B, C, D, E)
+  \toprule
+  & B & C & D & E \\ 
+  \midrule
+  \textit{Fagus sylvatica}           &   0 & 130 &  20 &   8 \\ 
+  \textit{Pinus}                     &   0 &   3 &   0 &   0 \\ 
+  \textit{Pinus brutia}              &   0 &  12 &   0 &   0 \\ 
+  \textit{Pinus contorta}            &   0 &   0 &   1 &   0 \\ 
+  \textit{Pinus heldreichii}         &   0 &  28 &   1 &   0 \\ 
+  \textit{Pinus lambertiana}         &   0 &   4 &   0 &   0 \\ 
+  \textit{Pinus mugo}                &   0 &   8 &   0 &   0 \\ 
+  \textit{Pinus mugo} subsp. uncinata &   0 &  13 &   2 &   1 \\ 
+  \textit{Pinus peuce}               &   0 &   1 &   0 &   0 \\ 
+  \textit{Pinus pinaster}            &   1 &   2 &   0 &   0 \\ 
+  \textit{Pinus pinea}               &   4 & 107 &   3 &   0 \\ 
+  \textit{Pinus strobus}             &   0 &   1 &   0 &   0 \\ 
+  \textit{Pinus sylvestris}          &   4 & 156 & 157 &  30 \\ 
+  \textit{Quercus}                   &   0 &  62 &   2 &   0 \\ 
+  \textit{Quercus cerris}            &   0 &   1 &   0 &   0 \\ 
+  \textit{Quercus faginea}           &   1 &   3 &   0 &   0 \\ 
+  \textit{Quercus frainetto}         &   1 &   0 &   0 &   0 \\ 
+  \textit{Quercus hartwissiana}      &   0 &   1 &   0 &   0 \\ 
+  \textit{Quercus petraea}           &   0 &  53 &   0 &   3 \\ 
+  \textit{Quercus pubescens}         &   0 &   1 &   0 &   0 \\ 
+  \textit{Quercus robur}             &   0 &  99 &  18 &   0 \\ 
+  \textit{Quercus rubra}             &   0 &   1 &   0 &   0 \\ 
+  \textit{Quercus suber}             &   0 &   3 &   0 &   0 \\ 
+  \bottomrule
+\end{tabular}
+\end{table}
+
+
+To remove the negative trend related to tree aging, the dendrochronological series were detrended using a cubic spline with a 50\% cutoff frequency and a length of 30 years, following a standard methodology employed in other multi-site studies \parencite{tokarska-osyczka2025, klesse2019, bhuyan2017}. Some works have also limited the analysis to a common time interval, ensuring that every single series presents a growth value within the considered period \parencite{alzeley2023, camarero2024, vieira2021}.
+
+As observed by Buras \parencite{buras2022}, this choice avoids allowing the varying lengths of the series to influence the sample mean. Furthermore, it prevents the average site trend from becoming distorted or unrepresentative of the entire dataset, ensuring that the final average is not the result of a very small number of series. For instance, in a sample composed of twenty dendrochronological series where nineteen reach the year 2000 while the twentieth series ends prematurely during the middle of the last century, adopting a rigid exclusion criterion would lead to the loss of the entire site signal for the period following the conclusion of the shortest series. Such cases are not uncommon in international archives like the ITRDB, where an excessively restrictive approach would result in a significant loss of information. The reduced extent of a single series can derive from multiple factors, including dating revisions, anatomical anomalies such as missing or false rings, or systematic measurement errors \parencite{speer2010}.
+
+The application of such a rigorous filtering strategy would be excessively penalizing in a multi-site context, unlike studies involving a small number of series where manual control of the effects remains possible. For these reasons, it was preferred to adopt a less restrictive exclusion criterion, setting a minimum threshold of six trees per site. It should be noted that the sampling protocol involves taking multiple measurements per plant \parencite{uwicer2017}; therefore, this threshold guarantees a potential of 12 dendrochronological series for each sample. This choice was based on literature indicating that a number of series between 10 and 15 is generally sufficient to ensure an adequate signal for climatic reconstruction \parencite{wigley1984}.
+
+The comparison between the two criteria \cref{fig:depth} highlights how applying the more restrictive criterion leads to the exclusion of up to 44\% of the samples compared to the 6-tree threshold. In absolute terms, this choice allowed for the inclusion of 200 additional ring widths on average each year that would have otherwise been excluded using the more restrictive method. This decision ensured that samples whose temporal gaps affected only a minimal fraction of the dataset were not discarded, thereby preserving the continuity of the growth trend observed at the site level. At the same time, the adoption of this minimum threshold mitigated the risk of the average chronology becoming excessively dependent on a very small number of series, thus ensuring greater statistical robustness for the final dendrochronological signal. Finally, a weighted average series of the growth chronologies (master chronology) was constructed for each site to synthesize the growth signal at the site level.
+
+\begin{figure}[!ht]
+    \centering
+    \makebox[\textwidth][c]{
+    \includegraphics[width=1\textwidth]{sample_depth_cumulative.pdf} }
+    \caption{Temporal prevalence curves showing the relative frequency of the study samples for the years from 1901 to 2024, out of the total of 946 study sites. The two curves distinguish the different methods of sample inclusion. The blue curve represents the prevalence curve following the common interval approach, while the orange curve shows the prevalence with a sampling threshold of 6 trees.}
+    \label{fig:depth}
+\end{figure}
+
+\subsection{Statistical analysis}
+To study the relationship between ring growth and the SPEI climatic variable, a Generalized Additive Mixed Model (GAMM) was employed \parencite{wood2017}. For managing the effect of past climate on the growth variable, the model proposed by Gasparrini, defined as Distributed Lag Non-linear Models (DLNM), was adopted \parencite{gasparrini2010}.
+
+This study is not the first application of a distributed lag model within a context of climatic and dendrochronological data, as evidenced by the works of Xu and Vanoni \parencite{xu2024, vanoni2016}. In this study, the use of DLNM allowed for modeling the relationship between ring growth and water balance across two dimensions: the intensity of the climatic signal, expressed through the SPEI index, and the temporal dimension, defining the period of influence of the water balance in the months preceding wood formation. The model adopts natural cubic splines to describe the relationship in each dimension, capturing the critical drought thresholds beyond which radial growth recovery is compromised. The number of lags considered, specifically the months prior to growth in which to examine the water balance, was selected based on a preliminary exploratory analysis of the cross-correlation between the climatic index and the dendrochronological series. The number of lags included in the model was set at the point where significant correlations decreased, while the choice of the number of degrees of freedom for each dimension was based on Akaike and Bayesian information criteria (AIC and BIC).
+
+To isolate the climatic signal of the SPEI index from long-period variations not linked to interannual variability, a first-order autoregressive term (AR1) was included in the model, aimed at purifying growth from the influence of the previous year, along with a penalized spline for the year variable, intended to capture long-term temporal trends. The hierarchical structure of the data was managed by inserting the site identifier as a random effect on the intercept.
+
+The model is reported following Gasparrini’s notation:
+
+\begin{equation}g(\mu_{i,t}) = \alpha + \phi\ y_{i,t-1} + \sum_{j=1}^{J} s_j(x_{t,j}; \boldsymbol{\beta}_j) + b_i
+\end{equation}
+where
+\begin{itemize}
+    \item $g$ is the logarithmic link function.
+    \item $\mu_{i,t}$ corresponds to the expected value of growth $i$ at time $t$.
+    \item $\alpha$ is the intercept.
+    \item $\phi\ y_{i,t-1}$ indicates the autoregressive term of growth.
+    \item $s_j(x_{t,j}; \boldsymbol{\beta}_j)$ represents the smoothing functions, which include both the cross basis relative to the delayed climatic effect and the penalized spline for the year variable.
+    \item $b_i$ is the random effect associated with the sampling site.
+\end{itemize}Given the nature of the response variable, specifically radial growth, which consists solely of strictly positive values, the Gamma function was adopted as the distribution through the logarithmic link function. The cross basis matrix is composed of monthly values of the SPEI climatic index, sampled starting from lag 0 corresponding to September of the current growth year (sep0), and proceeding backwards until reaching the twentieth previous month, which corresponds to December of the previous year (dec-1). The choice to begin the series in September is motivated by the end of the vegetative period, conventionally placed at the conclusion of the summer season \parencite{menzel2006}.The degrees of freedom assigned to the Cross Basis matrix are 2 for the SPEI variable and 6 for the considered lag months (21), assigned by evaluating the Akaike (AIC) and Bayesian (BIC) information criteria, as suggested by Gasparrini. For the entire processing of the dendrochronological series and climatic variables, the R software, version $4.2.2$, was employed \parencite{team-r2022}, along with the main supplementary packages:
+
+\begin{itemize}
+    \item \textbf{dplR} for the analysis of dendrochronological series \parencite{bunn2025}.
+    \item \textbf{dplyr} and \textbf{lubridate} for dataframe manipulation \parencite{wickham2026, grolemund2011}.
+    \item \textbf{terra} for the management and extraction of climatic data from geographic grids \parencite{hijmans2026}.
+    \item \textbf{dlnm} for the application of the DLNM model \parencite{gasparrini2011}.
+    \item \textbf{lme4, splines}, and \textbf{mgvc} for the implementation of mixed models and penalized splines, ensuring computational efficiency on large datasets \parencite{bates2015, wang2021, wood2011}.
+    \item \textbf{ggplot2} and \textbf{paletteer} for the creation and customization of graphics \parencite{wickham2016, hvitfeldt2021}.
+\end{itemize}
+
+% --------------------
+% Results
+% --------------------
+
+\section{Results}
+
+\subsection{Climate correlation analysis}
+
+To determine the persistence of the climatic signal within the ring growth series, the cross-correlation between the annual growth series (Master chronology) and the SPEI climatic index associated with the sampling sites was analyzed. Since the growth data are expressed on an annual basis while the SPEI index employed is at a monthly scale (SPEI1), it was necessary to make the two time series comparable by aggregating the monthly climatic information into an annual indicator. To this end, for each month, the deviation from the mean value observed for that same month throughout the entire time series was calculated to represent the monthly climatic anomaly rather than the absolute value of the index. Subsequently, the monthly deviations were summed within each year to obtain a synthetic annual index of the water status. In order to distinguish the effects associated with water stress conditions from those deriving from a precipitation surplus, the sign of the monthly deviations was maintained, avoiding the use of absolute values or squaring which would have eliminated the information regarding the direction of the climatic anomaly. The following formula describes the procedure adopted to derive the annual SPEI series from the monthly values:
+
+\begin{equation}
+SPEI_{y} =  \sum_{m=1}^{12} (SPEI_{m,y} - \overline{SPEI_{m}})
+\end{equation}
+
+The letter $m$ indicates the reference month, while the letter $y$ indicates the year. Conversely, $\overline{SPEI_{m}}$ corresponds to the average of the SPEI index in month $m$.
+
+\begin{figure}[!ht]
+    \centering
+    \begin{subfigure}{\textwidth}
+        \centering
+        \includegraphics[width=0.8\textwidth]{cross_correlation_Fagus.pdf}
+        \caption{\textit{Fagus sylvatica}}
+        \label{fig:cross_fagus}
+    \end{subfigure}
+    \vspace{0.3cm}
+    \begin{subfigure}{\textwidth}
+        \centering
+        \includegraphics[width=0.8\textwidth]{cross_correlation_Pinus.pdf}
+        \caption{\textit{Pinus} spp.}
+        \label{fig:cross_pinus}
+    \end{subfigure}
+    \vspace{0.3cm}
+    \begin{subfigure}{\textwidth}
+        \centering
+        \includegraphics[width=0.8\textwidth]{cross_correlation_Quercus.pdf}
+    \caption{Significant cross-correlations between the site master chronology and the SPEI climatic series at various time lags. Brown bars represent the percentage of significant correlations out of the total sites per tree genus. Lag 0 indicates the cross-correlation within the same year; Lag 1 indicates the cross-correlation between growth values in year $t$ and the SPEI index in year $t-1$; Lag 4 indicates the cross-correlation between growth values in year $t$ and the SPEI index in year $t-4$.}
+    \label{fig:confronto_totale}
+    \end{subfigure}
+\end{figure}
+
+cross-correlation allows for measuring the degree of association between tree ring growth series and the annual trend of the SPEI index, while also enabling an assessment of the potential presence of delayed relationships between the water conditions of previous years and annual growth. For each tree genus considered (\textit{Pinus}, \textit{Fagus}, \textit{Quercus}), sampled on a European continental-scale, a higher percentage of significant correlations emerged in the actual growth year and the immediately preceding year, compared to lags spanning between two and four years prior \cref{fig:confronto_totale}. This result suggests that the sensitivity of plant growth to the SPEI climatic index does not end in the current growth year but appears high in the previous year as well. Beyond this time interval, the strength of the relationship tends to decrease rapidly in broadleaf trees, whereas in conifers the decay appears more gradual, indicating a possible persistence of the climatic signal and a longer ecological memory in this group.
+
+\subsection{Analysis of the seasonality of physiological responses of different European species to water conditions}
+
+\begin{figure}[!ht]
+    \centering
+    \includegraphics[trim={0cm 5cm 0cm 4cm}, clip, width=0.6\textheight, keepaspectratio]{gasparrini_genus.pdf}
+    \caption{Estimated coefficient surfaces from the cross-basis matrix of the SPEI index across different monthly lags relative to growth for each analyzed genus: \textit{Pinus}, \textit{Fagus}, and \textit{Quercus}. Brighter colors indicate a larger coefficient and a greater magnitude of effect on radial growth. Red indicates a negative effect, while blue represents a positive effect on radial growth.}
+    \label{fig:Fig4}
+\end{figure}
+
+The application of Gasparrini’s model (see Section 2.3) allowed for a comparison between the three most widespread European tree genera: \textit{Pinus}, \textit{Fagus}, and \textit{Quercus}, from which clear distinctions in physiological responses relative to local water availability emerged. Specifically, the results highlight how the genus \textit{Fagus} shows the greatest vulnerability to water stress, with a particularly marked growth contraction corresponding to the minimum values of the SPEI index \cref{fig:Fig4}. Although all examined genera present a similar seasonal effect, characterized by greater sensitivity to water deficit during the spring and summer seasons, the period of maximum radial growth vulnerability manifests at two distinct moments: 1) During the current year, in the months of May and June; 2) During the previous year, corresponding to the end of the vegetative season \cref{fig:Fig5}.
+
+Comparing the genera \textit{Pinus} and \textit{Quercus} under water stress conditions reveals a slightly lower sensitivity of the conifer to drought events occurring in the period between September and August of the previous year. In parallel, the genus \textit{Pinus} seems to derive less benefit from potential water surplus conditions \cref{fig:Fig6}, suggesting a lower overall reactivity to local hydrological variables compared to \textit{Fagus} and \textit{Quercus}. Unlike water deficit, conditions of high water availability do not show an equally defined seasonality, as they are characterized by confidence intervals wide enough to prevent the certain identification of a peak month in the vegetative response. However, the data generally allow for the assertion that water abundance exerts a favorable effect on plant growth, albeit with varying intensity among the tree genera considered.
+
+\begin{figure}[!ht]
+    \centering
+    \includegraphics[width=0.86\textwidth]{gasparrini_genus_neg.pdf} 
+    \caption{Lag-response curves representing two-dimensional slices of the response surface at a fixed SPEI value of -2.5 (extreme drought) with 95\% confidence intervals, stratified by tree genus.}
+    \label{fig:Fig5}
+\end{figure}
+
+\begin{figure}[!ht]
+    \centering
+    \includegraphics[width=0.86\textwidth]{gasparrini_genus_pos.pdf} 
+    \caption{Lag-response curves representing two-dimensional slices of the response surface at a fixed SPEI value of +2.5 (water abundance) with 95\% confidence intervals, stratified by tree genus.}
+    \label{fig:Fig6}
+\end{figure}
+
+
+\subsection{Analysis of the seasonality of growth responses to water conditions in different climatic zones}
+
+\begin{figure}[!ht]
+    \centering
+    \includegraphics[trim={2cm 2cm 0cm 0cm}, clip, height=0.77\textheight, keepaspectratio]{gasparrini_zona.pdf}
+    \caption{Estimated coefficient surfaces from the cross-basis matrix of the SPEI index across different monthly lags relative to growth for each considered geographical macro-area for the genus \textit{Pinus}. Brighter colors represent a higher coefficient value. Red indicates a negative effect, while blue represents a positive effect on radial growth.}
+    \label{fig:Fig7}
+\end{figure}
+
+The comparison between different European climatic zones highlighted clear distinctions in the response of the genus \textit{Pinus} relative to local water availability \cref{fig:Fig7}. Specifically, the results indicate that water abundance favors radial development primarily in the more arid areas (B), where the benefit is greater than in other climatic zones. This benefit also manifests, albeit to a lesser extent, in temperate and Mediterranean zones (C). In contrast, in polar (E) and continental (D) regions, an abundance of water does not seem to provide significant growth advantages, with the exception of the polar zone, where a benefit linked to water availability during the winter period is observed. Finally, the results show that arid and temperate regions are more sensitive to immediate climatic stress compared to higher latitudes.
+
+Analyzing the seasonality of responses under conditions of water abundance \cref{fig:Fig8}, a consistent trend emerges across the different zones, with a nearly mirrored dynamic between the colder climatic zones (D, E) and the more temperate one (C). The only exception is represented by the arid zone (B), which shows a signal slightly shifted in time; however, this evidence does not allow for precise statistical inferences due to the reduced sample size, which results in a significant widening of the confidence bands. Although the benefit deriving from high water availability in the year preceding growth appears significant, it is not possible to draw similar conclusions for the current year, as the confidence bands include the value 1 (null effect on the response scale).
+
+This limitation related to sampling also affects the analysis of responses to water deficit, although in this case, the results show a seasonality in line with the rest of the continent \cref{fig:Fig9}. During the growth year, maximum sensitivity to water stress is concentrated in the spring and summer period, specifically May and June, showing a result slightly delayed compared to the previous year. Indeed, it emerges that greater vulnerability in the months of August and September of the preceding year has a greater impact than water stress occurring in the spring. Finally, it is observed that during the autumn and winter months, conditions of low water availability do not play a determining role in the growth response.
+
+\begin{figure}[!ht]
+    \centering
+    \includegraphics[width=0.86\textwidth]{gasparrini_zona_neg.pdf} 
+    \caption{Lag-response curves representing two-dimensional slices of the response surface at a fixed SPEI value of -2.5 (extreme drought) with 95\% confidence intervals, stratified by European climate zones for the genus \textit{Pinus}.}
+    \label{fig:Fig9}
+\end{figure}
+
+\begin{figure}[!ht]
+    \centering
+    \includegraphics[width=0.86\textwidth]{gasparrini_zona_pos.pdf} 
+    \caption{Lag-response curves representing two-dimensional slices of the response surface at a fixed SPEI value of +2.5 (water abundance) with 95\% confidence intervals, stratified by European climate zones for the genus \textit{Pinus}.}
+    \label{fig:Fig8}
+\end{figure}
+
+\section{Discussion}
+
+To study the seasonal influence of climate on radial growth, a DLNM model was employed (see Section 2.3). In order to isolate the climatic response of interest from the physiological memory of the tree, a first-order autoregressive term (AR1) was included in the model. The inclusion of this variable, which proved significant for the model \cref{app:Rmarkdown}, allowed for the explanation of an additional 10\% of the total deviance, a value approximately equal to half of the proportion explained by the entire model. These percentages should be interpreted considering the non-linear nature of the DLNM model combined with the extreme biological complexity of the response variable. Radial growth is, in fact, the biological result of a multi-factorial interaction far more extensive than the climatic variables considered in the model alone. Consequently, although the study results show a determining role of the water balance on growth rings, it remains unlikely to exhaustively describe an extremely complex physiological process influenced by countless endogenous and environmental factors not considered in this study. The variance associated with the site random effect was extremely low across all model configurations, indicating that the site-specific baseline growth level did not vary variationally once broad climatic trends were accounted for. This result is consistent with the phenomenon of spatial convergence, widely discussed in other studies. This phenomenon offers a possible explanation according to which tree populations geographically distant by even thousands of kilometers show high synchrony among their growth rings \parencite{vieira2021, shestakova2016}.
+
+
+\subsection{Persistent effect of water status on tree growth}
+
+Numerous studies have focused on analyzing and understanding the persistence of the effect of extreme climatic event on tree growth. These studies have highlighted how the impact of extreme events does not end in the year the event occurs but can extend into subsequent growing seasons \parencite{huang2018}. In particular, droughts and late frosts, in addition to causing significant reductions in radial growth during the event years, can influence growth in the immediately following period, even in the presence of favorable climatic conditions. This persistence effect over time is attributed to various factors, such as damage to tissues responsible for sap transport, reduction of carbohydrate reserves, and impairment of photosynthetic functions \parencite{mirabel2023, sala2012}.
+
+Furthermore, it has emerged that the magnitude and duration of these effects depend both on the severity and duration of the extreme event and on the ecological characteristics of the species and its relative climatic context \parencite{vitasse2019, gazol2018}. Indeed, species more sensitive to water stress tend to show greater growth reductions and longer recovery times, while more resistant species sometimes exhibit conservative strategies and higher levels of resilience.
+
+Our results show a greater number of significant cross-correlations between radial growth series and the water balance observed in the same year and in the year immediately preceding the growth value~\cref{fig:confronto_totale}, in line with the theoretical framework of climatic event persistence. Tree growth thus appears partly influenced by previous climatic conditions; however, the absence of correlation beyond the first year suggests the presence of carry-over effects that are temporally limited to the event and do not extend beyond the second growth year. Although a generalized decline is observed beyond the first year, the results seem to highlight a slightly higher climatic memory in the genus \textit{Pinus}, showing a modest number of significant correlations even two years after the event compared to the other analyzed genera. This result suggests a greater persistence over time of drought events in \textit{Pinus}, but it should be noted that annual correlation alone does not constitute an exhaustive analysis of the climate-growth relationship, starting due to its inability to capture the intensity and non-linear duration of climatic conditions—factors considered decisive for the vegetative response of trees, which are further explored in the following sections.
+
+
+\subsection{Seasonal responses among major European populations}
+
+It is widely documented that beech (\textit{Fagus sylvatica} L.) is characterized by high sensitivity to climatic variations, a factor that has determined its distribution and evolution in Europe \parencite{beloiuschwenke2024, leuschner2020}. This sensitivity also emerges in several comparative studies with other trees, which place beech among the forest species most vulnerable to drought, showing lower resistance and resilience capacities as well as longer post-event recovery times compared to many conifers and other broad-leaved trees \parencite{winterartusio2025}. In addition to water stress, beech is particularly vulnerable to late frosts, a key factor in determining the altitudinal and latitudinal distribution limits of the species \parencite{meyer2024}.
+
+The comparison between \textit{Pinus}, \textit{Quercus}, and \textit{Fagus} carried out in this study has highlighted differences in physiological responses relative to observed water availability \cref{fig:Fig4}. Consistent with the findings reported above, beech is confirmed as the species most sensitive to drought \cref{fig:Fig5}. This fragility manifests not only concurrently with the drought event but also in relation to the climatic conditions of the year preceding growth, indicating a significant influence of the previous physiological state.
+
+A further aspect emerging from the seasonality analysis concerns the growth response under conditions of water abundance. The results indicate that high water availability conditions exert a positive effect on growth, but with an intensity generally lower than the negative impact associated with drought events. Furthermore, this response appears less constrained to specific seasonal windows, suggesting that growth is favored primarily when the water resource is distributed relatively uniformly throughout the entire period preceding the vegetative season.
+
+In this context, the climatic conditions of the dormant period also play a relevant ecological role. It has been found, for example, that winter temperature does not represent a secondary factor for the species \textit{Pinus sylvestris}; on the contrary, milder winters can perform a compensatory function, helping to mitigate the effects of particularly dry summer seasons and favoring a recovery of growth in the following year \parencite{harvey2020}.
+
+In parallel, studies conducted on a European scale have analyzed the effect of winter precipitation and soil moisture on forest physiological responses, highlighting that beech can experience positive effects on root growth and basal area increment during winter. This benefit is attributable to milder temperatures in the winter months together with precipitation that helps mitigate the negative effects of potential summer droughts \parencite{garthen2025}.
+
+The seasonal trend of the climatic response appears overall consistent among the genera \textit{Pinus}, \textit{Fagus}, and \textit{Quercus}. However, comparing the response to water stress between the year of the event and the preceding year, a temporal shift of several months in the maximum growth sensitivity emerges \cref{fig:Fig5}.
+
+Drought in the growth year shows its maximum impact in the May--July period, a period that coincides with the phase of maximum cambial activity and intense cellular production \parencite{rossi2007, cuny2015}. During this phenological phase, water availability directly regulates the processes of cell division and expansion, determining an immediate response of radial increment and a consequent reduction in ring width under water deficit conditions \parencite{korner2015}.
+
+Conversely, the most marked influence of drought from the previous year is concentrated in the months of August and September. It is plausible that late summer water stress reduces the accumulation of non-structural carbohydrates \parencite{sala2012, hartmann2013}, advances the cessation of cambial activity, and alters the hydraulic state with which the tree enters the winter dormancy phase \parencite{cuny2015}. Consequently, the ability to effectively reactivate growth processes in the following spring could be partially limited, generating a delayed climatic signal observable in the subsequent ring.
+
+This result suggests that late-season water stresses can produce more persistent effects on growth compared to early spring drought events, which may be at least partially compensated by favorable climatic conditions in the following months of the same growing season. Overall, such evidence indicates that the response of tree growth does not depend exclusively on the intensity of the climatic stress, but also on the timing of its occurrence relative to the phenological and physiological phases of the annual plant cycle.
+
+
+\subsection{Comparison of seasonal responses across different climatic areas}
+
+Numerous studies have highlighted how the response of European forests to summer drought events presents a marked geographical heterogeneity, closely linked to climatic and ecological differences between sites \parencite{gharun2024}. A central aspect emerging from various studies concerns the latitudinal gradient: along which tolerance to water stress tends to increase toward the northern regions of the continent, where forests generally show a greater resilience capacity compared to those located at lower latitudes \parencite{beloiuschwenke2024}. This result is reflected in studies highlighting a higher vulnerability in Central and Southern Europe; conversely, in Northern Europe and the Alpine arc, the effects of drought events are on average more contained, also thanks to the adaptation of species to colder climatic conditions \parencite{knutzen2025}. Similarly, comparative analyses between arid and humid sites show that water deficit produces significantly more marked growth reductions in climatically dry contexts compared to environments characterized by greater water availability \parencite{gazol2020}.
+
+The results obtained in this study are consistent with the theoretical framework outlined in the literature, highlighting how critical water conditions exert immediate and particularly severe effects in sites belonging to arid (B) and temperate Mediterranean (C) climates \cref{fig:Fig7}. In contrast, in colder contexts, such as Alpine and boreal ones (D and E), growth is overall less sensitive to water stresses occurring during the spring summer period of the growth year.
+
+A further element emerging from the analysis concerns a clear seasonal differentiation in continental and polar climates. In these regions, in fact, a water deficit occurring in the late summer of the previous year seems to influence growth to an extent comparable to, and sometimes greater than, the water stress observed in the current year \cref{fig:Fig8}. Although it is not possible to establish with certainty which of the two time windows exerts the dominant effect due to the overlapping of the confidence bands, such evidence suggests a greater temporal persistence of drought effects in colder climates, indicating a longer climatic memory compared to what is observed in more arid and Mediterranean regions.
+
+Some studies analyzing the duration of drought event effects across different European regions highlight how such impacts are more persistent and marked in generally more humid sites \parencite{gazol2020}. Overall, it emerges that forests belonging to temperate and Mediterranean climates tend to exhibit greater sensitivity to drought in the short and medium term (less than one year), while in continental contexts, forest communities show comparatively greater resistance, responding to prolonged drought periods or long term water stresses \parencite{bhuyan2017}.
+
+Recent research also suggests that high water availability in cold and boreal climates does not necessarily represent a favorable factor for forest development. Indeed, an increase in precipitation can hinder radial increment, in contrast to what is generally observed in temperate areas. The cause of this behavior is attributed to soil water saturation which, if occurring during the growing season, can compromise the functionality of the root system \parencite{lundgren2025}. The physiological mechanism underlying this response lies in the reduction of hydraulic conductivity and limited root development, conditions that inevitably translate into a contraction of radial growth \parencite{mirabel2023}. When such conditions of excess water combine with particularly cold temperatures, the overall stress can compromise leaf growth and photosynthetic activity even in locally adapted species, such as \textit{Pinus sylvestris} \parencite{roitto2019}.
+
+The results of the present study confirm this behavior \cref{fig:Fig9}: under conditions of water abundance, in fact, continental (D) and polar (E) climatic zones show predominantly negative effects, in sharp contrast to the positive response observed in regions characterized by milder temperatures.
+
+
+\subsection{Discussion of statistical approaches}
+
+From the dendrochronological series to the choice of the model, this section discusses and justifies the analytical methodologies adopted in the study.
+
+The ITRDB archive showed some inconsistencies between the geographical coordinates reported in the metadata published online and those contained in the file headers of the series. In these cases, the file header, prepared by the researchers who sampled the trees, was considered a reliable source, whereas the metadata, in addition to containing some discordant coordinates, are often incomplete. This approach allowed each site to be associated with precise geographical coordinates, which were consistent both with the actual land surface and with the spatial grids of the climatic variables and the Köppen-Geiger climate classification.
+
+Tree ring growth series intrinsically present temporal autocorrelation, which was preliminarily analyzed through autoregressive moving average models within an exploratory data context. In a restricted subset of sites, numbering about ten, the ARMAX model was estimated and selected as the best in terms of fit according to the Akaike information criterion. The results showed that the first-order autoregressive term (AR1) was not only highly significant but also sufficient to explain the growth response, making higher-order autoregressive terms superfluous. Although the growth series are intrinsically non-stationary, with a strong negative trend linked to tree aging, an autoregressive integrated moving average with exogenous variables (ARIMAX) model was not adopted because the series had already been detrended using specific functions for dendrochronological data available in the \textbf{dplR} package. The presence of a possible hierarchical structure at the site level was managed by including a Random Intercept variable in the model, which however proved to be non significant.
+
+The response indices were examined during the study but were ultimately not included in the results. This is due to their high instability, collinearity issues, and, in particular, the difficulty of identifying a robust method to detect the pointer years in which to consider the responses, as also reported in the literature. Similarly, the pointer year identification methods were evaluated but, like the growth indices, proved unsuitable for a multi-site analysis, producing discordant results both between methods and across the arbitrary thresholds applied. Despite the difficulty of detecting pointer years in multi-site contexts, this study aims to analyze growth responses without the need to identify drastic declines, still providing indications on the sensitivity of species to water conditions in environmental contexts. While considering the presence of more recent and high-performing detection methods, such as BSGC \parencite{buras2022}, it was decided to adopt a climatic variable independent of the growth series to analyze the growth trend. Initially, simple climatic variables were considered, such as precipitation, humidity, mean temperature, minimum temperature, and cloud cover; however, preliminary testing with an autoregressive moving average with exogenous variables (ARMAX) model highlighted the insufficiency of these raw variables in fully explaining the non-linear growth response.
+
+In light of these results, it was decided to use a climatic index capable of synthesizing information from different meteorological variables, representing the specific environmental condition of the sampling site. The chosen index is the SPEI (Standardized Precipitation and Evapotranspiration Index), described in Section 2.1. Other climatic archives, such as GELAM dataset \parencite{miralles2011}, were considered to identify potential external variables, including soil moisture, transpiration, and tree stress signals. Although these variables could have integrated the SPEI index in the growth analysis, their limited temporal resolution, with the first measurements available only from 1980, led to their exclusion from the study.
+
+In parallel, the use of the raw water balance, defined as precipitation minus evapotranspiration, was considered based on criticisms regarding the standardization of the SPEI (see Section 2.1). This approach allows the sign of the water balance (positive or negative) to be preserved in the analysis but presents significant difficulties in comparing different climatic regions, showing distinct distributions for each site and making the comparison between areas weak and inconsistent. For these reasons, only the SPEI was used in the study, which allows for a consistent comparison between sites and a high temporal resolution, making use of data available from 1901 to the present.
+
+The tree growth variable is regulated by multiple physiological processes and complex environmental dynamics and rarely follows simple linear relationships. In this context, the use of Generalized Additive Mixed Models (GAMM) allowed for the flexible modeling of potentially non-linear relationships between water-availability climatic variables and radial increment, avoiding the a priori imposition of a specific functional form.
+
+A crucial element of the analysis is represented by the temporal resolution of the data: although tree rings refer to the growth of a specific year, climatic variables are available with monthly resolution. Considering the persistent effects over time of extreme events on tree growth, synthesizing climatic variables at an annual level would result in a consistent loss of signal. To explicitly capture this temporal dynamic, a distributed Lag non-linear model (DLNM) was adopted, which allows for the simultaneous quantification of both the intensity of the water effect and its distribution over time. Unlike approaches based on independent monthly correlations, the DLNM allows for the description of a lag intensity response surface, reducing the risk of attributing effects to single months when the biological signal is distributed over multiple periods. The integration between GAMM and DLNM therefore represents an effective approach for the analysis of dendrochronological data, as it allows for simultaneously capturing the complex relationship between climatic conditions and radial growth, considering the temporal memory of trees, and enables the identification of not only which water conditions most influence growth but also when these conditions exert their effect along the temporal sequence.
+
+The model proposed in the study (see Section 2.3 \& Supplementary Material) included a first-order autoregressive term (AR1), which proved significant in previous analyses with autoregressive models. The inclusion of this term improved the model performance and, at the same time, purified the growth signal from the influence of the previous year. To further isolate the climatic signal from long-term variations not related to interannual variability, the year variable was included in the model through the use of a penalized spline. In dendrochronological series, radial growth is influenced not only by interannual climate variability but also by gradual trends due to biological processes and low frequency environmental changes. The use of a spline applied to the year variable allows for a more robust separation of the long-term structural component from the short- and medium-term climatic response, improving the stability of the estimates and the ecological interpretability of the coefficients associated with climatic effects and temporal lags. The choice to adopt a spline through a penalty term contributed, instead, to automatically controlling the complexity of the smooth function, balancing the fit to the data and the prevention of overfitting through a process regulated directly by the model.
+
+In conclusion, while clear protocols exist regarding the cross dating of cores for dating individual rings, the subsequent phase of analyzing dendrochronological series—particularly for studying relationships with climatic and environmental variables—is still in its infancy in the literature. To date, there is no universally applicable methodology that is independent of subjective user choices and, at the same time, based on internationally agreed upon statistical results. This situation leads to difficulties in comparing different studies and allows for a certain degree of arbitrariness in methodological choices, ranging from the preprocessing of raw data to the analysis of response indices and pointer year identification methods.
+
+
+\section{Conclusions}
+
+Understanding the complex relationship between forest ecosystem growth and specific local climatic conditions represents a crucial challenge for dendroclimatology today. In a climatic context threatened by rising temperatures and increasingly extreme weather events, achieving a greater awareness of the environmental factors favorable to the development and well-being of ecosystems is vital. This would allow for the adoption of appropriate forest management strategies aimed at safeguarding woodland environments and preventing damage caused by extreme climatic events.
+
+In this context, this study aims to deepen the understanding of the relationship between tree growth variability and local water conditions. The statistical investigation involved the use of DLNM models to capture the water signal in the months preceding and during growth. Large-scale archives of radial growth series allowed the analysis to be extended across a vast number of sites of different species and within diverse climatic contexts. The results revealed a significant impact of extreme water conditions on tree growth. The analysis of water sensitivity on a monthly basis highlighted a greater vulnerability to drought occurring in the late summer period of the previous year and in the months of May and June of the current growth year. Furthermore, the comparison between the main European species identified beech as the species most vulnerable to water deficit events. Finally, the analysis across different European climatic zones showed that in cold climates, conditions of water excess do not lead to an increase in growth.
+
+% -----------------------------------------------------------------
+% Declaration of Generative AI in the writing process
+% -----------------------------------------------------------------
+\section*{Declaration of Generative AI and AI-assisted technologies in the writing process}
+
+During the preparation of this work, the author(s) used Gemini to translate and refine the original Italian manuscript into English, improving the clarity and linguistic quality of the text. After using this tool/service, the author(s) reviewed and edited the content as needed and take(s) full responsibility for the content of the published article.
+
+% --------------------
+% bibliography
+% --------------------
+\printbibliography[heading=bibintoc,title={Bibliography}]
+
+\newpage
+\phantomsection
+\section*{Supplementary Materials}
+\addcontentsline{toc}{section}{Supplementary Materials}
+\label{app:Rmarkdown} 
+\stepcounter{section} % Forza l'aggiornamento del contatore per evitare che \cref punti alla bibliografia
+
+\vspace{0.2cm}
+\noindent\includegraphics[page=1, width=0.9\textwidth, height=0.85\textheight, trim=2cm 2cm 2cm 2cm, clip]{supplemento_eng.pdf}
+
+\newpage % Forza il passaggio alla pagina successiva prima di far partire il comando \includepdf
+
+% 2. Carica TUTTE LE ALTRE PAGINE (dalla 2 alla fine) nelle pagine successive
+\includepdf[
+    pages={2-}, % Aggiunte le graffe protettive per l'intervallo di pagine
+    scale=0.9,
+    pagecommand={\thispagestyle{plain}}, 
+    frame=false
+]{supplemento_eng.pdf}
+
+\end{document}

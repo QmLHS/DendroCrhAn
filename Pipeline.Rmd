@@ -1,0 +1,1147 @@
+---
+title: "Pipeline"
+author: "Giacomo Colasurdo"
+output: pdf_document
+---
+
+# Preamble
+
+## Downlaod my package
+
+```{r include=FALSE}
+#install.packages("remotes") # If you don't have
+#remotes::install_github("Jackz-Juice/DendroCrhAn")
+library(DendroCrhAn)
+```
+
+## Folder Creation
+
+To run the code, you need to download `Dati.rar` from the Dendrochronological series releases on GitHub (https://github.com/QmLHS/DendroCrhAn/releases). Additionally, you must move the `Dati` folder inside the `DendroCrhAn` directory. The `DendroCrhAn` folder must be in the same working directory as this script. If you prefer not to download the dendrochronological series via R code and skip the first part of this script, you can download `File.rar` and place the extracted `File` folder inside `DendroCrhAn`, just as you did with `Dati`.
+
+```{r}
+folder <- "DendroCrhAn"                  # The folder of the whole project
+folder_rwl <- file.path(folder,"File")   # when we will load the rwl series
+folder_plot <- file.path(folder,"Plot")  # when we will save plot
+folder_dati <- file.path(folder,"Dati")  # when we will load external data
+folder_res <- file.path(folder,"Result") # when we will save results
+```
+
+```{r}
+dir.create(folder_rwl, recursive = TRUE)
+dir.create(folder_plot)
+dir.create(folder_res)
+```
+
+# Download rwl series
+
+if you downloaded `File.rar` from the Dendrochronological series releases in GitHub (https://github.com/QmLHS/DendroCrhAn/releases) you can skip this part and go to `Stand Processing and Sample depth` chapter. In this case put the folder `File` instead the empty folder in the `DendroCrhAn` directory.
+
+```{r include=FALSE}
+library(DendroCrhAn)
+library(magrittr)
+library(stringr)
+library(rvest)
+library(httr)
+```
+
+The following code downloads .rwl files containing raw European Tree Ring Width (TRW) dendrochronological series using the download_files function. The function also returns a list of the downloaded file names. Depending on your connection, the download may take some time. If the website is unreachable or you wish to skip downloading the files this way, you can access them by downloading `File.rar` from the Dendrochronological series releases in GitHub (https://github.com/QmLHS/DendroCrhAn/releases). In this case put the folder `File` instead the empty folder in the `DendroCrhAn` directory.
+
+```{r, eval = FALSE}
+url = "https://www.ncei.noaa.gov/pub/data/paleo/treering/measurements/europe/"
+# select `download = TRUE` to download file in folder: `name_folder`
+# Archetype is the list of name files, but it's not necessary for next part 
+archetype <- download_files(url, name_folder = folder_rwl, download = FALSE)
+```
+
+# Stand Processing and Sample depth
+
+## Stand processing
+
+```{r include=FALSE}
+library(DendroCrhAn)
+library(ggplot2)
+library(dplR)
+library(dplyr)
+library(tidyr)
+```
+
+The `elabora_cronologie` function reads each dendrochronological series contained in every downloaded file. The series within each stand are detrended, cross-dated to determine the minimum number of annual observations, and finally compiled into the Master Chronology for the field. This is returned by the `cronologie_rwl` object, whereas the `df_long` output consists of a dataframe useful for constructing the sample depth plot. `crono` object is the list with every element (related to specific stand) is a data.frame with year (anno) and Master Chronology (rwl).
+
+```{r include=FALSE}
+cronologie_rwl <- elabora_cronologie(dir_file = folder_rwl)
+```
+
+We need to save separately the output related to Master Chronology Series `crono`, it's an essential part used until the end.
+
+```{r}
+crono <- cronologie_rwl$cronologie
+saveRDS(crono, file.path(folder_res,"crono.rds"))
+df_long <- cronologie_rwl$df_disponibilita
+stand_disponibili <- cronologie_rwl$stand_read
+```
+
+## Example of Sample Depth at a Single Site
+
+```{r include=FALSE}
+rwl_example <- "swit321.rwl"
+stand_example <- read.rwl(file.path(folder_rwl, rwl_example), format = "tucson")
+```
+
+```{r}
+res_threshold <- get_sample_depth(stand_example)
+sample_depth_single <- ggplot(res_threshold$df, aes(x = Anno, y = n_valore)) +
+  geom_area(fill = "steelblue", alpha = 0.1) +
+  geom_step(color = "steelblue", linewidth = 1) +
+  geom_hline(yintercept = res_threshold$soglia, color = "indianred",
+             linetype = "dashed", linewidth = 1) +
+  annotate("text",
+           x = max(res_threshold$df$Anno) - 35, y = res_threshold$soglia + 0.5, 
+           label = paste("minimum threshold:", res_threshold$soglia), 
+           color = "indianred", fontface = "bold", hjust = 0) +
+  labs(title = "Sample Replication and Robustness Threshold",
+       x = "Year", y = res_threshold$label) +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold",
+                                  margin = margin(b=10)),
+        axis.title.x = element_text(margin = margin(t = 15)),
+        axis.title.y = element_text(margin = margin(r = 15)))
+
+print(sample_depth_single)
+ggsave(file.path(folder_plot,"sample_depth.pdf"), width=9, height=6, dpi=300)
+```
+
+## Sample depth
+
+We present a representative plot of the sample depth, showing the percentage of stands on the y-axis against the year on the x-axis, using two different common interval functions. In blue, years without missing data in the stand are considered; in pink, a less conservative threshold of at least 6 trees is applied for a year to be included.
+
+```{r}
+sample_depth_cum <- ggplot(df_long, aes(x = Year, y = Relative_Frequency,
+                                           color = threshold_Type)) +
+  geom_line(linewidth = 1.3) + 
+  scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, 10),
+                     labels = function(x) paste0(x, "%")) +
+  scale_color_manual(
+    values = c("Threshold_6_Tree" = "lightsalmon",
+               "Common_Interval_100" = "steelblue"),
+    labels = c("100% Series (Common Interval)",
+               "Min. 6 Trees (Robust Threshold)")) +
+  labs(title = "Relative Frequency of Site Availability",
+       subtitle = paste("Based on",stand_disponibili, "valid sites"),
+    x = "Year", y = "Percentage of Total Sites", color = "Inclusion Criteria") +
+  theme_bw() + 
+  theme(legend.position = "bottom", plot.title = element_text(hjust = 0.5,
+                                                              face = "bold"))
+print(sample_depth_cum)
+ggsave(file.path(folder_plot,"sample_depth_cumulative.pdf"),
+                 plot = sample_depth_cum, width = 9, height = 6, dpi = 300)
+```
+
+# Metadata
+
+## Coordinat extraction
+
+```{r include=FALSE}
+library(DendroCrhAn)
+library(dplyr)
+library(tidyr)
+library(terra)
+```
+
+Using the `estrai_metadati_e_master` function, the header of the Tucson file is extracted to read the coordinates and the species related to the sample. For greater accuracy, the results are cross-referenced with metadata from the international ITRDB database—from which the samples originate—to determine the location of the stand as accurately as possible. A PackedSpatVector of the geographic points for each sample is also generated.
+
+```{r}
+output_spaziale <- estrai_metadati_e_master(
+  stand_validi  = names(crono), 
+  path_metadata = file.path(folder_dati,"ITRDBmetadata12January2022.txt"), 
+  dir_file      = folder_rwl, header = TRUE)
+output_spaziale$punti_vect <- terra::wrap(output_spaziale$punti_vect)
+punti_vect <- output_spaziale$punti_vect
+df_report  <- output_spaziale$df_coor
+saveRDS(output_spaziale, file.path(folder_res,"output_spaziale.rds"))
+```
+
+Display of mismatched species between file header and metadata
+
+```{r}
+na.omit(df_report[df_report$specie_estratta!=df_report$meta_species,
+          c("stand_id","specie_estratta","meta_species")])
+```
+
+After a careful review of the species, it emerged that this is merely a nomenclature discrepancy and does not affect the genus to which the species belongs. Therefore, the species specified in the metadata is used to maintain consistency with the remaining stands.
+
+```{r}
+na.omit(df_report[!(df_report$correspond_coord),c("stand_id","coord_X_raw",
+                                         "coord_X","meta_lat","diff_lat",
+                                         "correspond_coord",
+                                         "lat_definitiva","header_text")])
+```
+
+```{r}
+na.omit(df_report[!(df_report$correspond_coord),c("stand_id","coord_Y_raw",
+                                         "coord_Y","meta_lon","diff_lon",
+                                         "correspond_coord",
+                                         "lon_definitiva","header_text")])
+```
+
+The only stands with non-coincident coordinates is confirmed to be due to a misreading of the header text, so it doesn't require correction.
+
+```{r}
+df_report[is.na(df_report$specie_definitiva),]
+```
+
+From the header_text we see that Tree specie is "TICO".
+
+```{r}
+df_report[df_report$stand_id=="deu310","specie_definitiva"] <- "TICO"
+```
+
+## Coordinate position check
+
+With the function `gestisci_punti_in_acqua` we check whether the coordinates fall into water according to the map of the SPEI climate data.
+
+```{r}
+# 1. Carica il raster di riferimento
+raster_cru <- rast(file.path(folder_dati,"spei01.nc"))[[1]]
+
+# 2. Estrai i valori dal raster per i tuoi punti
+punti_vect <- terra::unwrap(punti_vect)
+valori <- terra::extract(raster_cru, punti_vect, ID = FALSE)[, 1]
+
+# 3. Trova quali punti restituiscono NA (quelli finiti in mare)
+punti_in_mare <- punti_vect[is.na(valori)]
+
+# 4. Estrai solo i nomi degli stand_id
+vettore_stand_mare <- punti_in_mare$stand_id
+
+df_report[df_report$stand_id %in% vettore_stand_mare,]
+```
+
+We replace invalid ocean coordinates with text metadata coordinates (when available) and rebuilds the spatial points vector. It then updates the output structure and verifies if any sites still remain misclassified over water.
+
+```{r}
+mask_conversione <- df_report$stand_id %in% vettore_stand_mare & 
+                    !is.na(df_report$meta_lat) & 
+                    !is.na(df_report$meta_lon)
+
+# Sovrascrivi lat_definitiva e lon_definitiva solo per le righe che soddisfano il controllo
+df_report$lat_definitiva[mask_conversione] <- df_report$meta_lat[mask_conversione]
+df_report$lon_definitiva[mask_conversione] <- df_report$meta_lon[mask_conversione]
+
+# --- RIGENERAZIONE PUNTI_VECT ---
+df_valid_geo <- df_report[!is.na(df_report$lon_definitiva) & 
+                          !is.na(df_report$lat_definitiva), ]
+
+if (nrow(df_valid_geo) > 0) {
+  punti_vect <- terra::vect(
+    df_valid_geo,
+    geom = c("lon_definitiva", "lat_definitiva"),
+    crs = "+proj=longlat +datum=WGS84"
+  )
+} else {
+  punti_vect <- NULL
+}
+
+output_spaziale$df_coor <- df_report
+output_spaziale$punti_vect <- if (!is.null(punti_vect)) terra::wrap(punti_vect) else NULL
+
+if (!is.null(punti_vect)) {
+  # Estrai di nuovo i valori dal raster sulle coordinate aggiornate
+  valori_nuovi <- terra::extract(raster_cru, punti_vect, ID = FALSE)[, 1]
+  
+  # Filtra i punti che rimangono tuttora in mare
+  punti_ancora_in_mare <- punti_vect[is.na(valori_nuovi)]
+  vettore_ancora_mare <- punti_ancora_in_mare$stand_id
+  
+  # Dataframe df_report filtrato per gli stand che ricadono ancora in acqua
+  df_ancora_in_mare <- df_report[df_report$stand_id %in% vettore_ancora_mare, ]
+  
+  cat("Numero di punti ancora in mare dopo la conversione:", nrow(df_ancora_in_mare), "\n\n")
+  print(df_ancora_in_mare)
+} else {
+  cat("Nessun punto valido presente in punti_vect.\n")
+}
+```
+
+
+I show the geographic map for each remaining site whose points fall over water; the blue arrow indicates the coordinate shift resulting from changing the sign of the longitude, while the brown arrow points to the nearest land cell.
+
+```{r}
+path_raster <- file.path(folder_dati,"spei01.nc")
+report_water <- gestisci_punti_in_acqua(output_spaziale,
+                                        path_raster_cru = path_raster)
+
+# 1. Carica il raster CRU per il background geografico
+raster_cru  <- terra::rast(file.path(folder_dati, "spei01.nc"))[[1]]
+ext_globale <- terra::ext(raster_cru)
+
+if (!is.null(report_water) && nrow(report_water) > 0) {
+  old_par <- par(no.readonly = TRUE)
+  for (i in seq_len(nrow(report_water))) {
+    
+    # Dati dello stand
+    id_stand <- report_water$stand_id[i]
+    lon_def  <- as.numeric(report_water$lon_definitiva[i])
+    lat_def  <- as.numeric(report_water$lat_definitiva[i])
+    lon_snap <- as.numeric(report_water$lon_snap[i])
+    lat_snap <- as.numeric(report_water$lat_snap[i])
+    
+    # Se le coordinate base non sono numeriche o sono NA, salta lo stand
+    if (is.na(lon_def) || is.na(lat_def)) next
+    
+    # Coordinate con longitudine invertita (-Lon)
+    lon_inv <- -1 * lon_def
+    lat_inv <- lat_def
+    
+    # Fallback per snap se vuoto o NA
+    if (is.na(lon_snap)) lon_snap <- lon_def
+    if (is.na(lat_snap)) lat_snap <- lat_def
+    
+    # --- CALCOLO SICURO DELL'ESTENZIONE (PROTEZIONE ANTI-CRASH) ---
+    v_lons <- c(lon_def, lon_snap, lon_inv)
+    v_lats <- c(lat_def, lat_snap, lat_inv)
+    
+    # Rimuoviamo eventuali NA/Inf
+    v_lons <- v_lons[is.finite(v_lons)]
+    v_lats <- v_lats[is.finite(v_lats)]
+    
+    # Calcolo estremi con limiti rigidi [-180, 180] e [-90, 90]
+    xmin_c <- max(-180, min(v_lons) - 6)
+    xmax_c <- min( 180, max(v_lons) + 6)
+    ymin_c <- max( -90, min(v_lats) - 5)
+    ymax_c <- min(  90, max(v_lats) + 5)
+    
+    # VERIFICA FONDAMENTALE: Se xmin >= xmax o ymin >= ymax, allarga di default
+    if (xmin_c >= xmax_c) {
+      xmin_c <- max(-180, lon_def - 6)
+      xmax_c <- min( 180, lon_def + 6)}
+    if (ymin_c >= ymax_c) {
+      ymin_c <- max(-90, lat_def - 5)
+      ymax_c <- min( 90, lat_def + 5)}
+    
+    # Creazione sicura dell'oggetto SpatExtent
+    e_zoom <- tryCatch({
+      terra::ext(xmin_c, xmax_c, ymin_c, ymax_c)
+    }, error = function(e) NULL)
+    if (is.null(e_zoom)) next
+    
+    # Crop protetto
+    r_crop <- tryCatch({
+      terra::crop(raster_cru, e_zoom)
+    }, error = function(e) NULL)
+    if (is.null(r_crop)) next
+    
+    # --- GRAFICA ---
+    par(mar = c(6, 4, 3, 2))
+    terra::plot(
+      r_crop, 
+      main   = paste("Stand on sea:", id_stand),
+      col    = terrain.colors(25, alpha = 0.5), 
+      legend = FALSE, 
+      axes   = TRUE)
+    
+    # 1. FRECCIA CHOCOLATE: Snap-to-land
+    if (!is.na(lon_snap) && (lon_def != lon_snap || lat_def != lat_snap)) {
+      arrows(x0 = lon_def, y0 = lat_def, 
+             x1 = lon_snap, y1 = lat_snap, 
+             col = "chocolate", lwd = 2, length = 0.1)}
+    points(lon_snap, lat_snap, col = "chocolate", pch = 17, cex = 1.6)
+    
+    # 2. FRECCIA BLU: Inversione di segno (-Lon)
+    if (!is.na(lon_inv)) {
+      arrows(x0 = lon_def, y0 = lat_def, 
+             x1 = lon_inv, y1 = lat_inv, 
+             col = "blue", lwd = 2, lty = 2, length = 0.1)
+      points(lon_inv, lat_inv, col = "blue", pch = 18, cex = 1.6)}
+    
+    # 3. PUNTO ROSSO: Coordinata Grezza (In Mare)
+    points(lon_def, lat_def, col = "red", pch = 19, cex = 1.6)
+    
+    # --- LEGENDA ---
+    legend("bottom", 
+           inset = c(0, -0.22), 
+           xpd = TRUE, 
+           horiz = TRUE, 
+           legend = c("Raw (In Sea)", "Snap-to-Land", "Inverted Sign (-Lon)"),
+           col = c("red", "chocolate", "blue"), 
+           pch = c(19, 17, 18), 
+           lty = c(NA, 1, 2), 
+           bg = "white", 
+           box.col = "gray",
+           cex = 0.85)}
+  par(old_par)
+  } else {
+  message("none.")}
+```
+
+We manually create a vector to record the corrections to be made.
+
+```{r}
+correction <- data.frame(stand_id=c("esp098","esp099","esp101","fra059","isl004",
+                                    "isl007","isl011","isl016","swe359",
+                                    "swe360","swe361","swe362","swed324"),
+                         correction=c(rep(FALSE,3),TRUE,rep(FALSE,4),rep(TRUE,5)))
+```
+
+We then apply these corrections to the output_spaziale object using the applica_correzioni_coordinate function, thereby updating the df_meta metadata data frame.
+
+```{r}
+output_spaziale <- applica_correzioni_coordinate(
+  df_report = df_report,
+  report_water = report_water,  
+  df_correction   = correction)
+
+# Save geo_points_wrap | Not necessary
+# geo_points <- output_spaziale$vect
+# geo_points_wrap <- terra::wrap(output_spaziale$vect)
+# saveRDS(geo_points_wrap,file.path(folder_res,"geo_points_wrap.rds"))
+
+# Organize the dataframe with metadata for all stands df_meta
+df_meta <- output_spaziale$df_meta[,c("stand_id","altitude","specie_definitiva",
+                                      "lon_corretta","lat_corretta")]
+colnames(df_meta) <- c("stand_id","altitude","specie","longitude","latitude")
+saveRDS(df_meta, file.path(folder_res,"df_meta.rds"))
+```
+
+## Clima extrapolation
+
+We then append the Köppen-Geiger climate classification information to the metadata dataframe developed so far.
+
+```{r include=FALSE}
+library(dplyr)
+library(tidyr)
+library(terra)
+```
+
+For the Köppen-Geiger climate classification groups are:
+B:  Arid climates
+C:  The union of
+Cf: Temperate climates and Cs: Mediterranean climates
+D:  Cold continental climates
+E:  Polar climates
+
+```{r}
+kg_map <- rast(file.path(folder_dati,"KG_1986-2010.grd"))
+rat <- readRDS(file.path(folder_dati,"rat.rds"))
+clima_valori <- terra::extract(kg_map, df_meta[, c("longitude", "latitude")])
+meta <- cbind(df_meta, clima_valori[, c("layer")])
+colnames(meta)[ncol(meta)] <- "ID"
+meta <- left_join(meta, rat, by="ID")
+colnames(meta)[(ncol(meta)-1):ncol(meta)] <- c("zona_id","climate_zona")
+df_meta <- meta %>% select("stand_id", "longitude", "latitude", "altitude",
+                           "climate_zona", "specie")
+df_meta <- Ocean_mask(df_meta, kg_map, rat)
+saveRDS(df_meta, file.path(folder_res,"df_meta.rds"))
+```
+
+## Taxonomy extension
+
+The taxonomy of the sampled species is further examined to group similar samples without excessive loss of information.
+
+```{r include=FALSE}
+library(dplyr)
+```
+
+The `Specie_tassonomia.csv` file contains complete taxonomic information for all analyzed tree species.
+
+```{r}
+tasso <- read.csv(file.path(folder_dati,"specie_tassonomia.csv"))
+head(tasso)
+```
+
+We integrate this dataset into the metadata data frame to cluster the data by taxonomic genus.
+
+```{r}
+df_meta <- readRDS(file.path(folder_res,"df_meta.rds"))
+
+# Join and classification for the interesting category
+tasso_join <- tasso %>% 
+  rename(specie = ID_Specie)
+veg_prep <- left_join(df_meta, tasso_join, by = "specie")
+```
+
+## Exploratory taxonomy data analysis
+
+Exploring the taxonomy of the data reveals a grouping by climate zones and between macro-classes such as conifers and broadleaves.
+
+```{r}
+cat("--- Proportion of missing values for the Category level ---\n")
+nrow(veg_prep[veg_prep$Category=="",])/nrow(veg_prep)
+```
+
+The Category level will be therefore removed from the taxonomic classification 
+
+```{r}
+cat("--- Kingdom Value ---\n")
+unique(veg_prep$Kingdom)
+cat("--- Class Value ---\n")
+unique(veg_prep$Class)
+```
+
+Phylum e Class always vary consistently across the dataset. Therefore, including all three taxonomic levels would provide redundant information for species differentiation. Likewise, Kingdom is constant across all species and is excluded from the final taxonomic dendrogram.
+
+```{r}
+veg_exp <- veg_prep %>%
+  mutate(gruppo_climatico = case_when(
+      grepl("^BS", climate_zona) ~ "BS",
+      grepl("^Cf", climate_zona) ~ "Cf",
+      grepl("^Cs", climate_zona) ~ "Cs",
+      grepl("^D",  climate_zona) ~ "D",
+      grepl("^ET", climate_zona) ~ "E"),
+    gruppo_Order = case_when(
+      Class  == "Pinopsida" ~ "Conifer",
+      Order  == "Fagales"   ~ "Broadleaf_Fagales",
+      TRUE                  ~ "Broadleaf_other"))
+```
+
+```{r}
+cat("--- Class Distribution ---\n")
+xtabs( ~ Class + gruppo_climatico, data = veg_exp)
+```
+
+```{r}
+cat("\n--- Group Classification Distribution ---\n")
+xtabs( ~ gruppo_Order + gruppo_climatico, data = veg_exp)
+```
+
+```{r}
+cat("\n--- Order Distribution ---\n")
+xtabs( ~ Order + gruppo_climatico, data = veg_exp)
+```
+
+Based on the observed distributions, the Mediterranean and Temperate climate zones were grouped under Category C of the Köppen-Geiger classification.
+
+```{r}
+veg_exp <- veg_prep %>% 
+  mutate(gruppo_climatico = case_when(
+      grepl("^B", climate_zona) ~ "B",
+      grepl("^C", climate_zona) ~ "C",
+      grepl("^D",  climate_zona) ~ "D",
+      grepl("^E", climate_zona) ~ "E"))
+```
+
+```{r}
+cat("\n--- Specie Distribution ---\n")
+xtabs( ~ Species + gruppo_climatico, data = veg_exp)
+```
+
+```{r}
+cat("\n--- Genus Distribution ---\n")
+xtabs( ~ Genus + gruppo_climatico, data = veg_exp)
+```
+
+From a taxonomic perspective, higher-level groupings (such as Class or Order) were avoided to prevent clustering distant species. We selected a genus-level approach to group ecologically more similar specimens. Driven by sample size requirements, the analysis was ultimately focused on three main genera: Pinus, Quercus, and Fagus
+
+```{r}
+Genus_target <- c("Pinus","Quercus","Fagus")
+veg <- veg_prep %>% 
+  mutate(gruppo_climatico = case_when(
+      grepl("^B", climate_zona) ~ "B",
+      grepl("^C", climate_zona) ~ "C",
+      grepl("^D",  climate_zona) ~ "D",
+      grepl("^E", climate_zona) ~ "E")) %>% 
+  filter(Genus %in% Genus_target) %>%
+  rename(gruppo_specie = Genus)
+
+# Final Saving of meta_essential
+df_veg <- veg[, c("stand_id", "gruppo_climatico", "gruppo_specie", 
+                  "longitude","latitude")]
+saveRDS(df_veg, file.path(folder_res,"df_veg.rds"))
+```
+
+```{r}
+cat("\n--- Genus Distribution ---\n")
+xtabs( ~ gruppo_specie + gruppo_climatico, data = veg)
+```
+
+## Dendogramma
+
+We generate a dendrogram of the species under study.
+
+```{r include=FALSE}
+library(ape)
+library(ggtree)
+library(ggplot2)
+
+dend_pro <- function(data) {
+  tax_levels <- c("Phylum", "Class", "Order", "Family", "Genus", "Species")
+  tax_tree_data <- data[, tax_levels]
+  
+  tax_tree_data[] <- lapply(tax_tree_data, as.factor)
+  albero <- as.phylo(~Phylum/Class/Order/Family/Genus/Species, data = tax_tree_data)
+  n_tips <- length(albero$tip.label)
+  n_nodes <- albero$Nnode
+  node_x_coords <- numeric(n_tips + n_nodes)
+  node_x_coords[1:n_tips] <- 6
+  
+  for(i in 1:n_nodes) {
+    node_name <- albero$node.label[i]
+    for(j in 1:5) { 
+      if(node_name %in% tax_tree_data[[tax_levels[j]]]) {
+        node_x_coords[n_tips + i] <- j
+        break
+      }
+    }
+  }
+  
+  albero$edge.length <- node_x_coords[albero$edge[,2]] - node_x_coords[albero$edge[,1]]
+  return(albero)}
+
+# Generazione dell'oggetto albero
+albero <- dend_pro(tasso)
+
+# Creazione del grafico ggtree
+mio_grafico <- ggtree(albero, size = 0.3) + 
+  geom_tiplab(size = 2.5, offset = 0.1, fontface = "italic") + 
+  geom_nodelab(aes(label = label), size = 2.5, hjust = 1.3, 
+               vjust = -0.5, color = "chocolate4") +
+  theme_void() + 
+  xlim(0.5, 8) 
+
+print(mio_grafico)
+
+pdf(file.path(folder_plot,"dendrogramma.pdf"), width = 6, height = 8)
+print(mio_grafico)
+dev.off()
+```
+
+## Map ITRDB plot
+
+Finally, we plot a geographic map of Europe divided by climate zones, displaying the points corresponding to each stand color-coded by taxonomic genus.
+
+```{r}
+library(terra)
+kg_map <- rast(file.path(folder_dati,"KG_1986-2010.grd"))
+names(kg_map) <- "class"
+e_europa <- ext(-15, 45, 34, 72)
+kg_europa <- crop(kg_map, e_europa)
+color_list <- c(
+  "1"="#960000", "2"="#FF0000", "3"="#FF6E6E", "4"="#FFCCCC", 
+  "5"="#CC8C14", "6"="#CCAA54", "7"="#FFCC00", "8"="#FFFF64", 
+  "9"="#005000", "10"="#007800", "11"="#00FF00",
+  "12"="#96FF00", "13"="#C8FF00", "14"="#CCFF33",
+  "15"="#966400", "16"="#969600", "17"="#96C800", 
+  "18"="#FF00FF", "19"="#C800C8", "20"="#960096", "21"="#963296",
+  "22"="#4B4B4B", "23"="#787878", "24"="#A0A0A0", "25"="#C8C8C8",
+  "26"="#9664FF", "27"="#99CCFF", "28"="#BDC7FF", "29"="#E1E6FF",
+  "30"="#FFFFFF", "31"="#64FFFF", "32"="#FFFFFF")
+nomi_classi <- c("1"="Af","2"="Am","3"="As","4"="Aw",
+                 "5"="BSh","6"="BSk","7"="BWh","8"="BWk",
+                 "9"="Cfa","10"="Cfb","11"="Cfc","12"="Csa",
+                 "13"="Csb","14"="Csc","15"="Cwa","16"="Cwb",
+                 "17"="Cwc","18"="Dfa","19"="Dfb","20"="Dfc",
+                 "21"="Dfd","22"="Dsa","23"="Dsb","24"="Dsc",
+                 "25"="Dsd","26"="Dwa","27"="Dwb","28"="Dwc",
+                 "29"="Dwd","30"="EF","31"="ET","32"="Ocean")
+colori_categorie <- c("Quercus"="#00FFFF","Fagus"="#FF2400","Pinus"="#FFD700")
+colori_punti <- colori_categorie[as.character(df_veg$gruppo_specie)]
+
+pdf(file.path(folder_plot,"Mappa_ITRDB.pdf"), width = 12, height = 10)
+par(mar = c(8, 12, 8, 12), oma = c(0, 0, 4, 0), bg = "white")
+
+# 2. Plot della mappa
+valori_presenti <- sort(unique(values(kg_europa, mat=FALSE)))
+valori_presenti <- valori_presenti[!is.na(valori_presenti)]
+
+plot(kg_europa, type = "classes", levels = as.character(valori_presenti),
+     col = color_list[as.character(valori_presenti)], colNA = "white",
+     axes = FALSE, legend = FALSE)
+
+ext <- ext(kg_europa)
+xmin <- ext[1]; xmax <- ext[2]; ymin <- ext[3]; ymax <- ext[4]
+w <- (ymax - ymin) * 0.015 
+
+zebra_axis <- function(side, levels, col1="black", col2="white") {
+  steps <- seq(side[1], side[2], length.out = levels + 1)
+  for (i in 1:levels) {
+    curr_col <- if (i %% 2 == 0) col1 else col2
+    if (side[3] == 1) {
+      rect(steps[i], side[4], steps[i+1], side[5], 
+           col=curr_col, border="black", xpd=TRUE)
+    } else { # Lati Verticali
+      rect(side[4], steps[i], side[5], steps[i+1],
+           col=curr_col, border="black", xpd=TRUE)
+    }
+  }
+}
+
+zebra_axis(c(xmin - w, xmax + w, 1, ymin - w, ymin), 10) # Sotto
+zebra_axis(c(xmin - w, xmax + w, 1, ymax, ymax + w), 10) # Sopra
+
+zebra_axis(c(ymin - w, ymax + w, 2, xmin - w, xmin), 8)  # Sinistra
+zebra_axis(c(ymin - w, ymax + w, 2, xmax, xmax + w), 8)  # Destra
+
+rect(xmin - w, ymin - w, xmax + w, ymax + w, 
+     border = "black", lwd = 1, xpd = TRUE)
+
+mtext("ITRDB Sites on Köppen-Geiger climate classification", 
+      side = 3, line = 0.3, outer = TRUE, cex = 1.6, font = 2)
+offset_x <- xmax + (xmax - xmin) * 0.01
+
+legend(x = offset_x, y = ymax,
+       legend = c(expression(italic("Pinus")), expression(italic("Fagus")),
+                  expression(italic("Quercus"))), 
+       pt.bg = colori_categorie, col = "black", pch = 21,
+       title = "Genus", cex = 1.1, pt.cex = 2,bty = "n", xpd = TRUE)
+
+pos_y_seconda <- ymax - (ymax - ymin) * 0.20 
+legenda_idx <- valori_presenti[valori_presenti != 32]
+legend(x = offset_x, y = pos_y_seconda, 
+       legend = nomi_classi[as.character(legenda_idx)], 
+       fill = color_list[as.character(legenda_idx)], 
+       title = "KG Zones", cex = 1.1, bty = "n", xpd = TRUE)
+
+df_veg <- readRDS(file.path(folder_res,"df_veg.rds"))
+points(df_veg$longitude, df_veg$latitude, col = "black", bg = colori_punti, 
+       pch = 21, cex = 1.3, lwd = 0.5, xpd = TRUE)
+
+dev.off()
+```
+
+## Pixel extraction
+
+To simplify the analysis, pixels are extracted directly from the SPEI climate variable map. This allows us to assign a specific pixel code to each site based on its geographic coordinates. This approach further accelerates the association between stands and climate data. From this point forward, the updated metadata data frame will be referred to as df_pixel.
+
+```{r include=FALSE}
+library(ncdf4)
+library(dplyr)
+```
+
+```{r}
+df_veg  <- readRDS(file.path(folder_res,"df_veg.rds"))
+nc_data <- nc_open(file.path(folder_dati,"spei01.nc"))
+map_lon <- ncvar_get(nc_data, "lon")
+map_lat <- ncvar_get(nc_data, "lat")
+nc_close(nc_data)
+
+find_pixel_index <- function(lon, lat, map_lon, map_lat) {
+  idx_lon <- which.min(abs(map_lon - lon))
+  idx_lat <- which.min(abs(map_lat - lat))
+  return(paste(idx_lon, idx_lat, sep = "_"))}
+
+df_pixel <- df_veg
+df_pixel$pixel_id <- mapply(find_pixel_index, 
+                            df_pixel$longitude, 
+                            df_pixel$latitude, 
+                          MoreArgs = list(map_lon = map_lon, map_lat = map_lat))
+saveRDS(df_pixel, file.path(folder_res,"df_pixel.rds"))
+```
+
+## Clima extrapolation
+
+The dataset containing climate information for SPEI and potential evapotranspiration is created using the `estrazione_clima` function (with the potential to incorporate additional climate variables, such as precipitation, temperature, etc.). The clima object is a list in which each pixel code is linked to a data frame containing all historical climate data over the years for that land cell.
+
+```{r include=FALSE}
+library(DendroCrhAn)
+```
+
+```{r}
+clima <- estrazione_clima(df_unici = df_pixel,
+                          v_file_clima = c("spei01.nc", "CRU_TS_pet.nc"),
+                          v_nomi = c("spei", "pet"), 
+                          cartella_dati = folder_dati)
+saveRDS(clima, file.path(folder_res,"clima.Rds"))
+```
+
+## rwl series plot
+
+We present an example of a tree-ring chronology that highlights pointer years.
+
+```{r include=FALSE}
+library(dplR)
+library(pointRes)
+library(ggplot2)
+#install.packages("remotes") # if necessary
+#remotes::install_github("AllanBuras/dendRolAB")
+library(dendRolAB)
+```
+
+```{r}
+RWL <- read.rwl(file.path(folder_rwl,"swit321.rwl"))
+df_pixel <- readRDS(file.path(folder_res,"df_pixel.rds"))
+pix <- df_pixel[df_pixel$stand_id=="swit321","pixel_id"]
+spei_df <- as.data.frame(scostamento(clima[[pix]][,c(1,2)]))
+ogg_swit <- plot_preparation(RWL,spei_df)
+```
+
+```{r}
+pdf(file = file.path(folder_plot,"grafico_rwi_swit.pdf"), width = 9, height = 6)
+  ggplot(ogg_swit$rwi, aes(x = Anno, y = valore, group = serie),) +
+    geom_line(color = "grey", linewidth = 0.5, alpha=0.3) +
+    geom_line(data = ogg_swit$master, aes(x = Anno, y = TRW, color = "TRW"),
+              linewidth = 0.8, inherit.aes = FALSE) +
+    geom_line(data = ogg_swit$spei, aes(x = Anno, y = SPEI, color = "SPEI"),
+              linewidth = 0.8, inherit.aes = FALSE) +
+    geom_vline(xintercept = c(1921,1944,1976), color = "grey50",
+               linewidth = 1, alpha = 0.4)+
+    geom_point(data = ogg_swit$df,
+      aes(x = year, y = y_plot, color = Methods), 
+      shape = 25, size = 3, stroke = 1.11, fill = NA, inherit.aes = FALSE ) +
+    labs(title = "Tree-ring series, SPEI index and Pointer years",
+         x = "Year",
+         y = "TRW",
+         color = NULL) +
+    theme_bw() +
+    theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 14, 
+                                    margin = margin(b = 20)), 
+        legend.title = element_text(size = 7, face = "bold"),
+        legend.text = element_text(size = 7, face="bold"),
+        legend.key.size = unit(0.45, "cm"),
+        legend.margin = margin(t = 2, r = 2, b = 2, l = 2),
+        axis.title.x = element_text(margin = margin(t = 15)),
+        axis.title.y = element_text(margin = margin(r = 15)),
+        axis.text.x = element_text(margin = margin(t = 5)),
+        axis.text.y = element_text(margin = margin(r = 5)),
+        legend.position = "bottom",
+        plot.margin = margin(t = 8, r = 12, b = 8, l = 8),
+          legend.box.background = element_rect(color = "black", linewidth = 0.7)) +
+    scale_color_manual( values = c("TRW" = "gold", "SPEI" = "indianred",
+        "IT" = "turquoise", "BSGC" = "orchid1"),
+         breaks = c("IT", "BSGC", "TRW", "SPEI")) +
+    annotate("text", x = 1995, y = ogg_swit$corr_df[2,4]-0.05,
+             label = paste0("correlation ",colnames(ogg_swit$corr_df)[1],
+                            ": ",ogg_swit$corr_df[1,1]),
+             color = "black", size = 4, fontface = "bold")
+dev.off()
+```
+
+# Cross Correlation
+
+Using the correlazione_significativa_lag function, we analyze the cross-correlation for each genus between radial growth chronologies and historical SPEI values at their respective geographic locations, evaluating how far back in time the correlation remains significant.
+
+```{r include=FALSE}
+library(DendroCrhAn)
+library(paletteer)
+library(stringr)
+library(ggplot2) 
+library(dplyr)
+```
+
+```{r}
+with(correlazione_significativa_lag(df_pixel, crono, clima, 
+                                    sel_orders = "Quercus"), {
+     print(grafico)
+     ggplot2::ggsave(file.path(folder_plot,"cross_correlation_Quercus.pdf"), 
+                     plot = grafico, width = 8, height = 6)})
+```
+
+```{r}
+with(correlazione_significativa_lag(df_pixel, crono, clima, 
+                                    sel_orders = "Pinus"), {
+     print(grafico)
+     ggplot2::ggsave(file.path(folder_plot,"cross_correlation_Pinus.pdf"), 
+                     plot = grafico, width = 8, height = 6)})
+```
+
+```{r}
+with(correlazione_significativa_lag(df_pixel, crono, clima, 
+                                    sel_orders = "Fagus"), {
+     print(grafico)
+     ggplot2::ggsave(file.path(folder_plot,"cross_correlation_Fagus.pdf"), 
+                     plot = grafico, width = 8, height = 6)})
+```
+
+# DLNM for species
+
+## Model Preparation
+
+```{r include=FALSE}
+library(DendroCrhAn)
+library(lubridate)
+library(stringr)
+library(dplyr)
+```
+
+```{r}
+df_pixel <- readRDS(file.path(folder_res,"df_pixel.rds"))
+```
+
+We prepare the data for the DLNM model: the prepara_dlnm_misto function generates the cross-basis matrix containing climate information at various time lags.
+
+```{r}
+dlnm_fagus   <- prepara_dlnm_misto(df_pixel, var_meteo = "spei",
+                                   var_ctrl = "pet",
+                                   month_n = 9, g_clima = NULL,
+                                   g_specie = "Fagus", lag_n = 21,
+                                   crono, clima)
+dlnm_quercus <- prepara_dlnm_misto(df_pixel, var_meteo = "spei",
+                                   var_ctrl = "pet",
+                                   month_n = 9, g_clima = NULL,
+                                   g_specie = "Quercus", lag_n = 21,
+                                   crono, clima)
+dlnm_pinus   <- prepara_dlnm_misto(df_pixel, var_meteo = "spei",
+                                   var_ctrl = "pet",
+                                   month_n = 9, g_clima = NULL,
+                                   g_specie = "Pinus", lag_n = 21,
+                                   crono, clima)
+```
+
+Next, a first-order autoregressive term is included using the termine_auto function, while matrix value consistency is verified via the controllo function.
+
+```{r}
+faggio <- termine_auto(dlnm_fagus$df, dlnm_fagus$mat)
+controllo(faggio, report = FALSE, rwl_prev = TRUE)
+faggio$df$ID <- as.factor(faggio$df$ID)
+quercia <- termine_auto(dlnm_quercus$df, dlnm_quercus$mat)
+controllo(quercia, report = FALSE, rwl_prev = TRUE)
+quercia$df$ID <- as.factor(quercia$df$ID)
+pino <- termine_auto(dlnm_pinus$df, dlnm_pinus$mat)
+controllo(pino, report = FALSE, rwl_prev = TRUE)
+pino$df$ID <- as.factor(pino$df$ID)
+```
+
+```{r}
+saveRDS(faggio,  file.path(folder_res,"dlnm_faggio.rds"))
+saveRDS(quercia, file.path(folder_res,"dlnm_quercia.rds"))
+saveRDS(pino,    file.path(folder_res,"dlnm_pino.rds"))
+```
+
+## Running model
+
+```{r include=FALSE}
+library(splines)
+library(dlnm)
+library(mgcv)
+```
+
+Afterwards, we identify the optimal degrees of freedom for the lag that best fits the model, whereas 2 degrees of freedom are assigned to the climate variable, simplifying SPEI to represent only positive and negative effects.
+
+```{r}
+risultati <- data.frame(df_var=integer(), df_lag=integer(), AIC=double())
+
+  for(j in 1:8) {
+    cb_faggio <- crossbasis(faggio$mat, lag = 20,
+                            argvar = list(fun = "ns", df = 2), 
+                            arglag = list(fun = "ns", df = j))
+    
+    mod_temp <- bam(rwl ~ cb_faggio + rwl_prev +
+                   s(ID, bs = "re") +
+                   s(anno, bs = "ps", k = 20),
+                   family = Gamma(link = "log"), 
+                   data = faggio$df,
+                   method = "fREML",
+                   discrete = TRUE)
+    
+    risultati <- rbind(risultati, data.frame(df_var=i, df_lag=j, AIC=AIC(mod_temp)))}
+
+# finde the lowest AIC combination
+miglior_modello <- risultati[which.min(risultati$AIC),]
+print(miglior_modello)
+```
+
+The model is fitted using the bam function to speed up computation times.
+
+```{r}
+cb_faggio <- crossbasis(faggio$mat, lag = 20,
+                       argvar = list(fun = "ns", df = 2), 
+                       arglag = list(fun = "ns", df = 6))
+model_faggio <- bam(rwl ~ cb_faggio + rwl_prev +
+                   s(ID, bs = "re") +
+                   s(anno, bs = "ps", k = 20),
+                   family = Gamma(link = "log"), 
+                   data = faggio$df,
+                   method = "fREML",
+                   discrete = TRUE)
+pred_faggio <- get_dlnm_pred(model_faggio, cb_faggio, cb_name = "cb_faggio")
+```
+
+```{r}
+cb_quercia <- crossbasis(quercia$mat, lag = 20,
+                       argvar = list(fun = "ns", df = 2), 
+                       arglag = list(fun = "ns", df = 6))
+model_quercia <- bam(rwl ~ cb_quercia + rwl_prev +
+                   s(ID, bs = "re") +
+                   s(anno, bs = "ps", k = 20),
+                   family = Gamma(link = "log"), 
+                   data = quercia$df,
+                   method = "fREML",
+                   discrete = TRUE)
+pred_quercia <- get_dlnm_pred(model_quercia, cb_quercia, cb_name = "cb_quercia")
+```
+
+```{r}
+cb_pino <- crossbasis(pino$mat, lag = 20,
+                       argvar = list(fun = "ns", df = 2), 
+                       arglag = list(fun = "ns", df = 6))
+model_pino <- bam(rwl ~ cb_pino + rwl_prev +
+                   s(ID, bs = "re") +
+                   s(anno, bs = "ps", k = 20),
+                   family = Gamma(link = "log"), 
+                   data = pino$df,
+                   method = "fREML",
+                   discrete = TRUE)
+pred_pino <- get_dlnm_pred(model_pino, cb_pino, cb_name = "cb_pino")
+```
+
+## Showing results
+
+```{r include=FALSE}
+library(DendroCrhAn)
+library(ggplot2)
+```
+
+We show the model results, specifically highlighting the response coefficients of radial growth to positive and negative climate impacts.
+
+```{r}
+nomi <- c("Pinus","Quercus","Fagus")
+confronto_lag(lista_pred = list(pred_pino,pred_quercia,pred_faggio),
+              valore_spei = 2.5, lag_n=21, nomi_gruppi = nomi, font = "italic")
+ggsave(filename = file.path(folder_plot,"gasparrini_genus_pos.pdf"),
+       device = "pdf",width = 7, height = 5,  units = "in",dpi = 300 )
+```
+
+```{r}
+confronto_lag(lista_pred = list(pred_pino,pred_quercia,pred_faggio),
+              valore_spei = -2.5, lag_n=21, nomi_gruppi = nomi, font = "italic")
+ggsave(filename = file.path(folder_plot,"gasparrini_genus_neg.pdf"),
+       device = "pdf",width = 7, height = 5,  units = "in",dpi = 300 )
+```
+
+Finally, a comprehensive plot visualizes the three-dimensional nature of these models, using red tones for negative effects and blue tones for positive effects.
+
+```{r}
+grafico_unito(pred_pino,pred_quercia,pred_faggio, nomi=nomi, font = "italic",
+              titolo="Lagged Effects of SPEI on Tree Growth by Genus")
+ggsave(filename = file.path(folder_plot,"gasparrini_genus.pdf"), 
+       device = "pdf",width = 7, height = 10,  units = "in", dpi = 300 )
+```
+
+# DLNM for climatic zone
+
+The same analysis is then repeated by comparing results grouped by climate zone rather than by genus.
+
+## Model Preparation
+
+```{r}
+dlnm_B   <- prepara_dlnm_misto(df_pixel, var_meteo = "spei",
+                                   var_ctrl = "pet",
+                                   month_n = 9, g_clima = "B",
+                                   g_specie = "Pinus", lag_n = 21,
+                                   crono, clima)
+dlnm_C   <- prepara_dlnm_misto(df_pixel, var_meteo = "spei",
+                                   var_ctrl = "pet",
+                                   month_n = 9, g_clima = "C",
+                                   g_specie = "Pinus", lag_n = 21,
+                                   crono, clima)
+dlnm_D   <- prepara_dlnm_misto(df_pixel, var_meteo = "spei",
+                                   var_ctrl = "pet",
+                                   month_n = 9, g_clima = "D",
+                                   g_specie = "Pinus", lag_n = 21,
+                                   crono, clima)
+dlnm_E   <- prepara_dlnm_misto(df_pixel, var_meteo = "spei",
+                                   var_ctrl = "pet",
+                                   month_n = 9, g_clima = "E",
+                                   g_specie = "Pinus", lag_n = 21,
+                                   crono, clima)
+```
+
+```{r}
+B <- termine_auto(dlnm_B$df, dlnm_B$mat)
+controllo(B, report = FALSE, rwl_prev = TRUE)
+B$df$ID <- as.factor(B$df$ID)
+C <- termine_auto(dlnm_C$df, dlnm_C$mat)
+controllo(C, report = FALSE, rwl_prev = TRUE)
+C$df$ID <- as.factor(C$df$ID)
+D <- termine_auto(dlnm_D$df, dlnm_D$mat)
+controllo(D, report = FALSE, rwl_prev = TRUE)
+D$df$ID <- as.factor(D$df$ID)
+E <- termine_auto(dlnm_E$df, dlnm_E$mat)
+controllo(E, report = FALSE, rwl_prev = TRUE)
+E$df$ID <- as.factor(E$df$ID)
+```
+
+```{r}
+saveRDS(B, file.path(folder_res,"dlnm_B.rds"))
+saveRDS(C, file.path(folder_res,"dlnm_C.rds"))
+saveRDS(D, file.path(folder_res,"dlnm_D.rds"))
+saveRDS(E, file.path(folder_res,"dlnm_E.rds"))
+```
+
+# Running model
+
+```{r include=FALSE}
+library(splines)
+library(dlnm)
+library(mgcv)
+```
+
+```{r}
+cb_B <- crossbasis(B$mat, lag = 20,
+                   argvar = list(fun = "ns", df = 2), 
+                   arglag = list(fun = "ns", df = 6))
+model_B <- bam(rwl ~ cb_B + rwl_prev + s(ID, bs = "re") +
+                   s(anno, bs = "ps", k = 20),
+                   family = Gamma(link = "log"), 
+                   data = B$df,
+                   method = "fREML",
+                   discrete = TRUE)
+pred_B <- get_dlnm_pred(model_B, cb_B, cb_name = "cb_B")
+```
+
+```{r}
+cb_C <- crossbasis(C$mat, lag = 20,
+                   argvar = list(fun = "ns", df = 2), 
+                   arglag = list(fun = "ns", df = 6))
+model_C <- bam(rwl ~ cb_C + rwl_prev + s(ID, bs = "re") +
+                   s(anno, bs = "ps", k = 20),
+                   family = Gamma(link = "log"), 
+                   data = C$df,
+                   method = "fREML",
+                   discrete = TRUE)
+pred_C <- get_dlnm_pred(model_C, cb_C, cb_name = "cb_C")
+```
+
+```{r}
+cb_D <- crossbasis(D$mat, lag = 20,
+                   argvar = list(fun = "ns", df = 2), 
+                   arglag = list(fun = "ns", df = 6))
+model_D <- bam(rwl ~ cb_D + rwl_prev + s(ID, bs = "re") +
+                   s(anno, bs = "ps", k = 20),
+                   family = Gamma(link = "log"), 
+                   data = D$df,
+                   method = "fREML",
+                   discrete = TRUE)
+pred_D <- get_dlnm_pred(model_D, cb_D, cb_name = "cb_D")
+```
+
+```{r}
+cb_E <- crossbasis(E$mat, lag = 20,
+                   argvar = list(fun = "ns", df = 2), 
+                   arglag = list(fun = "ns", df = 5))
+model_E <- bam(rwl ~ cb_E + rwl_prev + s(ID, bs = "re") +
+                   s(anno, bs = "ps", k = 20),
+                   family = Gamma(link = "log"), 
+                   data = E$df,
+                   method = "fREML",
+                   discrete = TRUE)
+pred_E <- get_dlnm_pred(model_E, cb_E, cb_name = "cb_E")
+```
+
+
+# Showing result
+
+```{r include=FALSE}
+library(DendroCrhAn)
+library(ggplot2)
+```
+
+```{r}
+nomi <- c("E","D","C","B")
+confronto_lag(lista_pred = list(pred_E,pred_D,pred_C,pred_B),
+              valore_spei = -2.5, lag_n = 21, nomi_gruppi = nomi)
+ggsave(filename = file.path(folder_plot,"gasparrini_zona_neg.pdf"),
+       device = "pdf",width = 7, height = 5,  units = "in",dpi = 300 )
+```
+
+```{r}
+confronto_lag(lista_pred = list(pred_E,pred_D,pred_C,pred_B),
+              valore_spei = 2.5, lag_n=21, nomi_gruppi = nomi)
+ggsave(filename = file.path(folder_plot,"gasparrini_zona_pos.pdf"),
+       device = "pdf",width = 7, height = 5,  units = "in",dpi = 300 )
+```
+
+```{r}
+grafico_unito(pred_E,pred_D,pred_C,pred_B, nomi=nomi, n_righe=2,
+              titolo="Lagged Effects of SPEI on Tree Growth by Climatic Group")
+ggsave(filename = file.path(folder_plot,"gasparrini_zona.pdf"), 
+       device = "pdf",width = 5, height = 8,  units = "in", dpi = 300 )
+```
