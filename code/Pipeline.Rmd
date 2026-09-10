@@ -908,7 +908,7 @@ Afterwards, we identify the optimal degrees of freedom for the lag that best fit
 ```{r}
 risultati <- data.frame(df_var=integer(), df_lag=integer(), AIC=double())
 
-  for(j in 1:8) {
+  for(j in 2:6) {
     cb_faggio <- crossbasis(faggio$mat, lag = 20,
                             argvar = list(fun = "ns", df = 2), 
                             arglag = list(fun = "ns", df = j))
@@ -921,7 +921,7 @@ risultati <- data.frame(df_var=integer(), df_lag=integer(), AIC=double())
                    method = "fREML",
                    discrete = TRUE)
     
-    risultati <- rbind(risultati, data.frame(df_var=i, df_lag=j, AIC=AIC(mod_temp)))}
+    risultati <- rbind(risultati, data.frame(df_lag=j, AIC=AIC(mod_temp)))}
 
 # finde the lowest AIC combination
 miglior_modello <- risultati[which.min(risultati$AIC),]
@@ -1106,7 +1106,7 @@ pred_D <- get_dlnm_pred(model_D, cb_D, cb_name = "cb_D")
 ```{r}
 cb_E <- crossbasis(E$mat, lag = 20,
                    argvar = list(fun = "ns", df = 2), 
-                   arglag = list(fun = "ns", df = 5))
+                   arglag = list(fun = "ns", df = 6))
 model_E <- bam(rwl ~ cb_E + rwl_prev + s(ID, bs = "re") +
                    s(anno, bs = "ps", k = 20),
                    family = Gamma(link = "log"), 
